@@ -1,2 +1,4 @@
-"# wjhati_django" 
-"# wjhati_django" 
+السلام عليكم ورحمة الله وبركاتة
+
+
+pip install -r requirements.txt
