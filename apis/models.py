@@ -40,8 +40,8 @@ class BaseModel(models.Model):
 
 class Client(BaseModel):
     user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name='client', verbose_name=_("المستخدم"))
-    photo = models.TextField(null=True, blank=True, verbose_name=_("رابط الصورة"))
-    device_id = models.TextField(null=True, blank=True, verbose_name=_("معرف الجهاز"))
+    photo = models.URLField(null=True, blank=True, verbose_name=_("رابط الصورة"))
+    device_id = models.CharField(max_length=255, null=True, blank=True, verbose_name=_("معرف الجهاز"))
     status = models.BooleanField(default=True, verbose_name=_("الحالة"))
     status_del = models.BooleanField(default=False, verbose_name=_("الحالة (محذوف)"))
     city = models.CharField(max_length=50, null=True, blank=True, verbose_name=_("المدينة"))
@@ -65,20 +65,6 @@ class Wallet(BaseModel):
     class Meta:
         verbose_name = _("محفظة")
         verbose_name_plural = _("المحافظ")
-
-
-class ChargeCard(BaseModel):
-    card_code = models.CharField(max_length=20, unique=True, verbose_name=_("رمز الشحن"))
-    amount = models.DecimalField(max_digits=15, decimal_places=2, verbose_name=_("قيمة الشحن"))
-    is_used = models.BooleanField(default=False, verbose_name=_("هل تم الاستخدام؟"))
-    wallet = models.ForeignKey(Wallet, on_delete=models.CASCADE, related_name='charge_cards', verbose_name=_("المحفظة"))
-
-    def __str__(self):
-        return f"{self.card_code} - {self.amount}"
-
-    class Meta:
-        verbose_name = _("كارت شحن")
-        verbose_name_plural = _("كروت الشحن")
 
 
 class Transaction(BaseModel):
@@ -284,7 +270,7 @@ class Booking(BaseModel):
 
     trip = models.ForeignKey(Trip, on_delete=models.CASCADE, verbose_name=_("الرحلة"))
     customer = models.ForeignKey(Client, on_delete=models.CASCADE, verbose_name=_("العميل"))
-    seat_number = models.IntegerField(verbose_name=_("عدد المقاعد"))
+    number_of_seats = models.IntegerField(verbose_name=_("عدد المقاعد"))
     booking_date = models.DateTimeField(auto_now_add=True, verbose_name=_("تاريخ الحجز"))
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING, verbose_name=_("حالة الحجز"))
 
@@ -304,7 +290,7 @@ class CasheBooking(BaseModel):
 
     where_from = models.CharField(max_length=60, verbose_name=_("من أين"))
     to_where = models.CharField(max_length=60, verbose_name=_("إلى أين"))
-    number_set = models.IntegerField(verbose_name=_("عدد الأشخاص"))
+    number_of_people = models.IntegerField(verbose_name=_("عدد الأشخاص"))
     at_time = models.DateTimeField(auto_now_add=True, verbose_name=_("الوقت"))
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING, verbose_name=_("الحالة"))
 
@@ -312,8 +298,8 @@ class CasheBooking(BaseModel):
         return f"رحلة من {self.where_from} إلى {self.to_where}"
 
     class Meta:
-        verbose_name = _("حجز نقدي")
-        verbose_name_plural = _("الحجوزات النقدية")
+        verbose_name = _("طلب رحلة ")
+        verbose_name_plural = _(" طلبات الرحلات")
 
 
 class ItemDelivery(BaseModel):
@@ -338,8 +324,8 @@ class ItemDelivery(BaseModel):
         return f"تسليم من {self.sender.username} إلى {self.receiver.username}"
 
     class Meta:
-        verbose_name = _("تسليم عنصر")
-        verbose_name_plural = _("تسليم العناصر")
+        verbose_name = _("ارسال الاغرض")
+        verbose_name_plural = _("الاغراض المرسة معا الرحلات")
 
 
 class CasheItemDelivery(BaseModel):
@@ -361,64 +347,8 @@ class CasheItemDelivery(BaseModel):
         return f"تسليم نقدي من {self.sender.username} إلى {self.receiver.username}"
 
     class Meta:
-        verbose_name = _("تسليم نقدي")
-        verbose_name_plural = _("التسليمات النقدية")
-
-
-class UserActivityLog(BaseModel):
-    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, verbose_name=_("المستخدم"))
-    activity_type = models.CharField(max_length=50, verbose_name=_("نوع النشاط"))
-    activity_data = models.JSONField(verbose_name=_("بيانات النشاط"))
-    timestamp = models.DateTimeField(auto_now_add=True, verbose_name=_("الوقت"))
-
-    def __str__(self):
-        return f"{self.user.username} - {self.activity_type}"
-
-    class Meta:
-        verbose_name = _("سجل النشاط")
-        verbose_name_plural = _("سجلات النشاط")
-
-
-class Recommendation(BaseModel):
-    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='recommendations', verbose_name=_("المستخدم"))
-    recommended_item_id = models.IntegerField(verbose_name=_("معرف العنصر الموصى به"))
-    recommended_item_type = models.CharField(max_length=50, verbose_name=_("نوع العنصر الموصى به"))
-    recommendation_score = models.FloatField(verbose_name=_("درجة التوصية"))
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name=_("تاريخ الإنشاء"))
-
-    def __str__(self):
-        return f"{self.user.username} - {self.recommended_item_type}"
-
-    class Meta:
-        verbose_name = _("توصية")
-        verbose_name_plural = _("التوصيات")
-
-
-class UserPreference(BaseModel):
-    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name='preferences', verbose_name=_("المستخدم"))
-    preferences_data = models.JSONField(verbose_name=_("بيانات التفضيلات"))
-    updated_at = models.DateTimeField(auto_now=True, verbose_name=_("تاريخ التحديث"))
-
-    def __str__(self):
-        return f"{self.user.username} - التفضيلات"
-
-    class Meta:
-        verbose_name = _("تفضيلات المستخدم")
-        verbose_name_plural = _("تفضيلات المستخدمين")
-
-
-class AIModelData(BaseModel):
-    data_type = models.CharField(max_length=100, verbose_name=_("نوع البيانات"))
-    data = models.JSONField(verbose_name=_("البيانات"))
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name=_("تاريخ الإنشاء"))
-
-    def __str__(self):
-        return f"{self.data_type} - {self.created_at}"
-
-    class Meta:
-        verbose_name = _("بيانات نموذج الذكاء الاصطناعي")
-        verbose_name_plural = _("بيانات نماذج الذكاء الاصطناعي")
-
+        verbose_name = _("طلب ارسال ")
+        verbose_name_plural = _("طلبات الارسال ")
 
 class Chat(BaseModel):
     participants = models.ManyToManyField(CustomUser, related_name='chats', verbose_name=_("المشاركون"))
