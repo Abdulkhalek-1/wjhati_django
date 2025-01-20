@@ -4,13 +4,13 @@ from .models import *
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
-        model = User
+        model = CustomUser
         fields = ["id", "username", "password"]
         extra_kwargs = {"password": {"write_only": True}}
 
     def create(self, validated_data):
         print(validated_data)
-        user = User.objects.create_user(**validated_data)
+        user = CustomUser.objects.create_user(**validated_data)
         return user
     
 class CustomUserSerializer(serializers.ModelSerializer):
@@ -22,12 +22,17 @@ class ClientSerializer(serializers.ModelSerializer):
     class Meta:
         model = Client
         fields = '__all__'
-
+        
 class WalletSerializer(serializers.ModelSerializer):
     class Meta:
         model = Wallet
-        fields = '__all__'
+        fields = ['user', 'balance']
 
+    def validate_user(self, value):
+        if self.context['request'].user != value:
+            raise serializers.ValidationError("You can only create or update your own wallet.")
+        return value
+    
 class TransactionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Transaction

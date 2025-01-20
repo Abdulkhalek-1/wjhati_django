@@ -5,7 +5,7 @@ from .views import *
 router = DefaultRouter()
 router.register(r'users', CustomUserViewSet)
 router.register(r'clients', ClientViewSet)
-router.register(r'wallets', WalletViewSet)
+router.register(r'wallets', WalletViewSet, basename='wallets')
 router.register(r'vehicles', VehicleViewSet)
 router.register(r'drivers', DriverViewSet)
 router.register(r'bonuses', BonusViewSet)

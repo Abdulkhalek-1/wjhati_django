@@ -7,9 +7,10 @@ from rest_framework.permissions import  AllowAny
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from .permissions import IsWalletOwner 
 
 class CreateUserView(generics.CreateAPIView):
-    queryset = User.objects.all()
+    queryset = CustomUser.objects.all()
     serializer_class = UserSerializer
     permission_classes = [AllowAny]
 
@@ -22,9 +23,12 @@ class ClientViewSet(viewsets.ModelViewSet):
     serializer_class = ClientSerializer
 
 class WalletViewSet(viewsets.ModelViewSet):
-    queryset = Wallet.objects.all()
     serializer_class = WalletSerializer
+    permission_classes = [IsWalletOwner]  # تطبيق الصلاحية المخصصة
 
+    def get_queryset(self):
+        user = self.request.user
+        return Wallet.objects.filter(user=user)
 
 
 class VehicleViewSet(viewsets.ModelViewSet):
