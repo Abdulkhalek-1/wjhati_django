@@ -100,6 +100,7 @@ class Client(BaseModel):
 
 class Wallet(BaseModel):
     CURRENCY_CHOICES = (
+        ('YE', 'ريال يمني'),
         ('SAR', 'ريال سعودي'),
         ('USD', 'دولار أمريكي'),
     )

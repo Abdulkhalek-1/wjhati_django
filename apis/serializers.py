@@ -1,7 +1,6 @@
 from rest_framework import serializers
 from .models import *
 from django.contrib.auth.hashers import make_password
-
 class CustomUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
@@ -30,13 +29,8 @@ class ClientSerializer(serializers.ModelSerializer):
 class WalletSerializer(serializers.ModelSerializer):
     class Meta:
         model = Wallet
-        fields = ['user', 'balance', 'currency', 'is_locked']
-        read_only_fields = ['balance', 'currency']
+        fields = '__all__'
         
-    def validate_user(self, value):
-        if self.context['request'].user != value:
-            raise serializers.ValidationError("You can only access your own wallet.")
-        return value
 
 class TransactionSerializer(serializers.ModelSerializer):
     class Meta:
@@ -48,12 +42,7 @@ class TransferSerializer(serializers.ModelSerializer):
     class Meta:
         model = Transfer
         fields = '__all__'
-        read_only_fields = ['transfer_code', 'created_at']
 
-    def validate(self, data):
-        if data['from_wallet'] == data['to_wallet']:
-            raise serializers.ValidationError("Cannot transfer to the same wallet.")
-        return data
 
 class VehicleSerializer(serializers.ModelSerializer):
     class Meta:

@@ -4,7 +4,6 @@ from rest_framework import generics, viewsets, status
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from .permissions import IsWalletOwner, ClientAccessPolicy, IsClientOwner
 from django.core.exceptions import PermissionDenied
 
 class CreateUserView(generics.CreateAPIView):
@@ -19,7 +18,6 @@ class CustomUserViewSet(viewsets.ModelViewSet):
 
 class ClientViewSet(viewsets.ModelViewSet):
     serializer_class = ClientSerializer
-    permission_classes = [ClientAccessPolicy]
 
     def get_queryset(self):
         if self.request.user.is_staff:
@@ -28,10 +26,9 @@ class ClientViewSet(viewsets.ModelViewSet):
 
 class WalletViewSet(viewsets.ModelViewSet):
     serializer_class = WalletSerializer
-    permission_classes = [IsAuthenticated, IsWalletOwner]
 
     def get_queryset(self):
-        return Wallet.objects.filter(user=self.request.user)
+        return Wallet.objects.all()
 
 class VehicleViewSet(viewsets.ModelViewSet):
     queryset = Vehicle.objects.all()
@@ -79,7 +76,6 @@ class RatingViewSet(viewsets.ModelViewSet):
         return Rating.objects.filter(rated_by=self.request.user)
 
 class SupportTicketViewSet(viewsets.ModelViewSet):
-    serializer_class = SupportTicketSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
@@ -203,7 +199,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Transaction.objects.filter(wallet__user=self.request.user)
+        return Transaction.objects.all()
 
     def perform_create(self, serializer):
         # التحقق من ملكية المحفظة قبل الإنشاء
