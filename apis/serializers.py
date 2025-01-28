@@ -1,14 +1,19 @@
 from rest_framework import serializers
 from .models import (
-    CustomUser, Client, Wallet, Transaction, Vehicle, Driver, Trip, Booking,
+    User, Client, Wallet, Transaction, Vehicle, Driver, Trip, Booking,
     Rating, Chat, Message, SupportTicket, Notification, Transfer, SubscriptionPlan,
     Subscription, Bonus, TripStop, ItemDelivery, CasheBooking, CasheItemDelivery
 )
 
-class CustomUserSerializer(serializers.ModelSerializer):
+class UserSerializer(serializers.ModelSerializer):
     class Meta:
-        model = CustomUser
-        fields = '__all__'
+        model = User
+        fields = ['username', 'email', 'password']
+        extra_kwargs = {'password': {'write_only': True}}
+
+    def create(self, validated_data):
+        user = User.objects.create_user(**validated_data)
+        return user
 
 class ClientSerializer(serializers.ModelSerializer):
     class Meta:

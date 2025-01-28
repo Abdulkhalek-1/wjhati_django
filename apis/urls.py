@@ -1,15 +1,8 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import (
-    CustomUserViewSet, ClientViewSet, WalletViewSet, TransactionViewSet,
-    VehicleViewSet, DriverViewSet, TripViewSet, BookingViewSet, RatingViewSet,
-    ChatViewSet, MessageViewSet, SupportTicketViewSet, NotificationViewSet,
-    TransferViewSet, SubscriptionPlanViewSet, SubscriptionViewSet, BonusViewSet,
-    TripStopViewSet, ItemDeliveryViewSet, CasheBookingViewSet, CasheItemDeliveryViewSet
-)
+from .views import *
 
 router = DefaultRouter()
-router.register(r'users', CustomUserViewSet)
 router.register(r'clients', ClientViewSet)
 router.register(r'wallets', WalletViewSet)
 router.register(r'transactions', TransactionViewSet)

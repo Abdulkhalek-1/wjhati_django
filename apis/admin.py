@@ -2,15 +2,9 @@ from django.contrib import admin
 from .models import *
 from django.utils.translation import gettext_lazy as _
 
-class CustomUserAdmin(admin.ModelAdmin):
-    list_display = ('username', 'email', 'user_type', 'phone_number', 'is_verified', 'last_activity')
-    list_filter = ('user_type', 'is_verified')
-    search_fields = ('username', 'email', 'phone_number')
-    readonly_fields = ('last_activity',)
-
 class ClientAdmin(admin.ModelAdmin):
-    list_display = ('user', 'city', 'status', 'preferred_language')
-    list_filter = ('status', 'city', 'preferred_language')
+    list_display = ('user', 'city', 'status')
+    list_filter = ('status', 'city')
     raw_id_fields = ('user',)
 
 class WalletAdmin(admin.ModelAdmin):
@@ -61,7 +55,6 @@ class ItemDeliveryAdmin(admin.ModelAdmin):
     search_fields = ('delivery_code',)
     readonly_fields = ('delivery_code',)
 
-admin.site.register(CustomUser, CustomUserAdmin)
 admin.site.register(Client, ClientAdmin)
 admin.site.register(Wallet, WalletAdmin)
 admin.site.register(Transaction, TransactionAdmin)

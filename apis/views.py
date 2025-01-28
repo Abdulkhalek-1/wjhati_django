@@ -1,21 +1,12 @@
 from rest_framework import viewsets
-from .models import (
-    CustomUser, Client, Wallet, Transaction, Vehicle, Driver, Trip, Booking,
-    Rating, Chat, Message, SupportTicket, Notification, Transfer, SubscriptionPlan,
-    Subscription, Bonus, TripStop, ItemDelivery, CasheBooking, CasheItemDelivery
-)
-from .serializers import (
-    CustomUserSerializer, ClientSerializer, WalletSerializer, TransactionSerializer,
-    VehicleSerializer, DriverSerializer, TripSerializer, BookingSerializer,
-    RatingSerializer, ChatSerializer, MessageSerializer, SupportTicketSerializer,
-    NotificationSerializer, TransferSerializer, SubscriptionPlanSerializer,
-    SubscriptionSerializer, BonusSerializer, TripStopSerializer, ItemDeliverySerializer,
-    CasheBookingSerializer, CasheItemDeliverySerializer
-)
+from .models import *
+from .serializers import *
+from rest_framework import generics
 
-class CustomUserViewSet(viewsets.ModelViewSet):
-    queryset = CustomUser.objects.all()
-    serializer_class = CustomUserSerializer
+class RegisterView(generics.CreateAPIView):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+
 
 class ClientViewSet(viewsets.ModelViewSet):
     queryset = Client.objects.all()

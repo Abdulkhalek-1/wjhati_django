@@ -1,58 +1,7 @@
 from django.db import models
 from django.utils.translation import gettext_lazy as _
-from django.contrib.auth.models import AbstractUser
-from django.core.validators import MinValueValidator, MaxValueValidator, RegexValidator
-from django.db.models import Index
-
-class CustomUser(AbstractUser):
-    USER_TYPE_CHOICES = (
-        ('driver', _('سائق')),
-        ('customer', _('عميل')),
-        ('admin', _('مدير النظام')),
-    )
-    
-    # تحسينات على نموذج المستخدم
-    user_type = models.CharField(max_length=10, choices=USER_TYPE_CHOICES, verbose_name=_("نوع المستخدم"))
-    phone_regex = RegexValidator(
-        regex=r'^\+?1?\d{9,15}$',
-        message=_("رقم الهاتف يجب أن يكون بالتنسيق: '+999999999'. حتى 15 رقمًا.")
-    )
-    phone_number = models.CharField(
-        validators=[phone_regex],
-        max_length=17,
-        unique=True,
-        verbose_name=_("رقم الهاتف")
-    )
-    profile_picture = models.URLField(null=True, blank=True, verbose_name=_("صورة الملف الشخصي"))
-    is_verified = models.BooleanField(default=False, verbose_name=_("حساب موثوق"))
-    last_activity = models.DateTimeField(auto_now=True, verbose_name=_("آخر نشاط"))
-    
-    # تعديلات على نظام الصلاحيات
-    groups = models.ManyToManyField(
-        'auth.Group',
-        related_name='customuser_groups',
-        blank=True,
-        verbose_name=_("المجموعات"),
-        help_text=_("المجموعات التي ينتمي إليها المستخدم.")
-    )
-    user_permissions = models.ManyToManyField(
-        'auth.Permission',
-        related_name='customuser_permissions',
-        blank=True,
-        verbose_name=_("صلاحيات المستخدم"),
-        help_text=_("الصلاحيات المحددة لهذا المستخدم.")
-    )
-
-    class Meta:
-        verbose_name = _("مستخدم")
-        verbose_name_plural = _("المستخدمون")
-        indexes = [
-            models.Index(fields=['phone_number']),
-            models.Index(fields=['user_type']),
-        ]
-
-    def __str__(self):
-        return f"{self.username} ({self.get_user_type_display()})"
+from django.contrib.auth.models import User
+from django.core.validators import MinValueValidator, MaxValueValidator
 
 
 class BaseModel(models.Model):
@@ -69,7 +18,7 @@ class BaseModel(models.Model):
 
 class Client(BaseModel):
     user = models.OneToOneField(
-        CustomUser,
+        User,
         on_delete=models.CASCADE,
         related_name='client',
         verbose_name=_("المستخدم")
@@ -78,12 +27,6 @@ class Client(BaseModel):
     status = models.BooleanField(default=True, verbose_name=_("الحالة"))
     status_del = models.BooleanField(default=False, verbose_name=_("محذوف"))
     city = models.CharField(max_length=50, verbose_name=_("المدينة"))
-    preferred_language = models.CharField(
-        max_length=10,
-        default='ar',
-        choices=[('ar', 'العربية'), ('en', 'الإنجليزية')],
-        verbose_name=_("اللغة المفضلة")
-    )
 
     class Meta:
         db_table = 'clients'
@@ -101,12 +44,10 @@ class Client(BaseModel):
 class Wallet(BaseModel):
     CURRENCY_CHOICES = (
         ('YE', 'ريال يمني'),
-        ('SAR', 'ريال سعودي'),
-        ('USD', 'دولار أمريكي'),
     )
     
     user = models.OneToOneField(
-        CustomUser,
+        User,
         on_delete=models.CASCADE,
         related_name='wallet',
         verbose_name=_("المستخدم")
@@ -120,7 +61,7 @@ class Wallet(BaseModel):
     currency = models.CharField(
         max_length=3,
         choices=CURRENCY_CHOICES,
-        default='SAR',
+        default='YE',
         verbose_name=_("العملة")
     )
     is_locked = models.BooleanField(
@@ -134,7 +75,7 @@ class Wallet(BaseModel):
         verbose_name_plural = _("المحافظ")
 
     def __str__(self):
-        return f"{self.user} - {self.balance} {self.currency}"
+        return f"{self.user.username} - {self.balance} {self.currency}"
 
 
 class Transaction(BaseModel):
@@ -257,7 +198,7 @@ class Vehicle(BaseModel):
 
 class Driver(BaseModel):
     user = models.OneToOneField(
-        CustomUser,
+        User,
         on_delete=models.CASCADE,
         related_name='driver',
         verbose_name=_("المستخدم")
@@ -289,7 +230,7 @@ class Driver(BaseModel):
         ]
 
     def __str__(self):
-        return f"{self.user.get_full_name()} - {self.license_number}"
+        return f"{self.user.username} - {self.license_number}"
 
 
 class Trip(BaseModel):
@@ -387,13 +328,12 @@ class Booking(BaseModel):
     class Meta:
         verbose_name = _("حجز")
         verbose_name_plural = _("الحجوزات")
-        unique_together = ('trip', 'customer')
         indexes = [
             models.Index(fields=['status']),
         ]
 
     def __str__(self):
-        return f"{self.customer.user} - {self.trip} ({len(self.seats)} مقاعد)"
+        return f"{self.customer.user.username} - {self.trip} ({len(self.seats)} مقاعد)"
 
 
 class Rating(BaseModel):
@@ -442,12 +382,12 @@ class Rating(BaseModel):
         ]
 
     def __str__(self):
-        return f"{self.rated_by.user} → {self.driver.user} ({self.rating}/5)"
+        return f"{self.rated_by.user.username} → {self.driver.user.username} ({self.rating}/5)"
 
 
 class Chat(BaseModel):
     participants = models.ManyToManyField(
-        CustomUser,
+        User,
         related_name='chats',
         verbose_name=_("المشاركون")
     )
@@ -479,7 +419,7 @@ class Message(BaseModel):
         verbose_name=_("المحادثة")
     )
     sender = models.ForeignKey(
-        CustomUser,
+        User,
         on_delete=models.CASCADE,
         related_name='sent_messages',
         verbose_name=_("المرسل")
@@ -520,7 +460,7 @@ class SupportTicket(BaseModel):
     ]
 
     user = models.ForeignKey(
-        CustomUser,
+        User,
         on_delete=models.CASCADE,
         related_name='tickets',
         verbose_name=_("المستخدم")
@@ -540,7 +480,7 @@ class SupportTicket(BaseModel):
         verbose_name=_("الأولوية")
     )
     assigned_to = models.ForeignKey(
-        CustomUser,
+        Driver,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -563,7 +503,7 @@ class SupportTicket(BaseModel):
 
 class Notification(BaseModel):
     user = models.ForeignKey(
-        CustomUser,
+        User,
         on_delete=models.CASCADE,
         related_name='notifications',
         verbose_name=_("المستخدم")
@@ -600,8 +540,6 @@ class Notification(BaseModel):
     def __str__(self):
         return f"{self.title} - {self.user}"
     
-# ... (الكود السابق يبقى كما هو)
-
 class Transfer(BaseModel):
     class Status(models.TextChoices):
         PENDING = 'pending', _("قيد الانتظار")
@@ -634,7 +572,6 @@ class Transfer(BaseModel):
     )
     transfer_code = models.CharField(
         max_length=10,
-        unique=True,
         verbose_name=_("رمز التحويل")
     )
 
@@ -709,12 +646,12 @@ class Subscription(BaseModel):
         ]
 
     def __str__(self):
-        return f"{self.driver.user} - {self.plan}"
+        return f"{self.driver.user.username} - {self.plan}"
 
 
 class Bonus(BaseModel):
     user = models.ForeignKey(
-        CustomUser,
+        User,
         on_delete=models.CASCADE,
         related_name='bonuses',
         verbose_name=_("المستخدم")
@@ -791,7 +728,7 @@ class ItemDelivery(BaseModel):
         verbose_name=_("الرحلة")
     )
     sender = models.ForeignKey(
-        CustomUser,
+        User,
         on_delete=models.CASCADE,
         related_name='sent_deliveries',
         verbose_name=_("المرسل")
@@ -813,7 +750,6 @@ class ItemDelivery(BaseModel):
     )
     delivery_code = models.CharField(
         max_length=10,
-        unique=True,
         verbose_name=_("كود الشحنة")
     )
     status = models.CharField(
@@ -843,7 +779,7 @@ class CasheBooking(BaseModel):
         CANCELLED = 'cancelled', _("ملغى")
 
     user = models.ForeignKey(
-        CustomUser,
+        Client,
         on_delete=models.CASCADE,
         related_name='cashe_bookings',
         verbose_name=_("المستخدم")
@@ -887,7 +823,7 @@ class CasheItemDelivery(BaseModel):
         CANCELLED = 'cancelled', _("ملغى")
 
     user = models.ForeignKey(
-        CustomUser,
+        Client,
         on_delete=models.CASCADE,
         related_name='cashe_deliveries',
         verbose_name=_("المستخدم")
@@ -916,4 +852,4 @@ class CasheItemDelivery(BaseModel):
         ]
 
     def __str__(self):
-        return f"طلب توصيل #{self.id} - {self.user}"
+        return f"طلب توصيل #{self.id} - {self.user.user.username}"
