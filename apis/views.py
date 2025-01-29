@@ -2,6 +2,11 @@ from rest_framework import viewsets
 from .models import *
 from .serializers import *
 from rest_framework import generics
+from rest_framework import viewsets, status
+from rest_framework.response import Response
+from .models import Wallet
+from .serializers import WalletSerializer
+from rest_framework.permissions import IsAuthenticated
 
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
@@ -12,10 +17,23 @@ class ClientViewSet(viewsets.ModelViewSet):
     queryset = Client.objects.all()
     serializer_class = ClientSerializer
 
-class WalletViewSet(viewsets.ModelViewSet):
-    queryset = Wallet.objects.all()
-    serializer_class = WalletSerializer
 
+class WalletViewSet(viewsets.ModelViewSet):
+    serializer_class = WalletSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        return Wallet.objects.filter(user=user)
+
+    def retrieve(self, request, *args, **kwargs):
+        wallet = self.get_queryset().first()
+        if wallet:
+            serializer = self.get_serializer(wallet)
+            return Response(serializer.data)
+        else:
+            return Response({"detail": "المحفظة غير موجودة."}, status=status.HTTP_404_NOT_FOUND)
+        
 class TransactionViewSet(viewsets.ModelViewSet):
     queryset = Transaction.objects.all()
     serializer_class = TransactionSerializer

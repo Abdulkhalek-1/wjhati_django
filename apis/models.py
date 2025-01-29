@@ -3,6 +3,60 @@ from django.utils.translation import gettext_lazy as _
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator, MaxValueValidator
 
+from django.contrib.auth.models import AbstractUser
+from django.db import models
+from django.utils.translation import gettext_lazy as _
+from django.contrib.auth.models import AbstractUser
+from django.core.validators import MinValueValidator, MaxValueValidator, RegexValidator
+from django.db.models import Index
+
+class CustomUser(AbstractUser):
+    USER_TYPE_CHOICES = (
+        ('driver', _('سائق')),
+        ('customer', _('عميل')),
+        ('admin', _('مدير النظام')),
+    )
+    
+    # تحسينات على نموذج المستخدم
+    user_type = models.CharField(max_length=10, choices=USER_TYPE_CHOICES, verbose_name=_("نوع المستخدم"))
+    phone_regex = RegexValidator(
+        regex=r'^\+?1?\d{9,15}$',
+        message=_("رقم الهاتف يجب أن يكون بالتنسيق: '+999999999'. حتى 15 رقمًا.")
+    )
+    phone_number = models.CharField(
+        validators=[phone_regex],
+        max_length=17,
+        unique=True,
+        verbose_name=_("رقم الهاتف")
+    )
+    profile_picture = models.URLField(null=True, blank=True, verbose_name=_("صورة الملف الشخصي"))
+    is_verified = models.BooleanField(default=False, verbose_name=_("حساب موثوق"))
+    last_activity = models.DateTimeField(auto_now=True, verbose_name=_("آخر نشاط"))
+    
+    # تعديلات على نظام الصلاحيات
+    groups = models.ManyToManyField(
+        'auth.Group',
+        related_name='customuser_groups',
+        blank=True,
+        verbose_name=_("المجموعات"),
+        help_text=_("المجموعات التي ينتمي إليها المستخدم.")
+    )
+    user_permissions = models.ManyToManyField(
+        'auth.Permission',
+        related_name='customuser_permissions',
+        blank=True,
+        verbose_name=_("صلاحيات المستخدم"),
+        help_text=_("الصلاحيات المحددة لهذا المستخدم.")
+    )
+    class Meta:
+        verbose_name = _("مستخدم")
+        verbose_name_plural = _("المستخدمون")
+        indexes = [
+            models.Index(fields=['phone_number']),
+            models.Index(fields=['user_type']),
+        ]
+    def __str__(self):
+        return f"{self.username} ({self.get_user_type_display()})"
 
 class BaseModel(models.Model):
     """
