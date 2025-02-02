@@ -1,10 +1,5 @@
 from rest_framework import serializers
-from .models import (
-    User, Client, Wallet, Transaction, Vehicle, Driver, Trip, Booking,
-    Rating, Chat, Message, SupportTicket, Notification, Transfer, SubscriptionPlan,
-    Subscription, Bonus, TripStop, ItemDelivery, CasheBooking, CasheItemDelivery
-)
-
+from .models import *
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User

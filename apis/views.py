@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from .models import Wallet
 from .serializers import WalletSerializer
 from rest_framework.permissions import IsAuthenticated
+from .models import Trip
 
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()

@@ -1,69 +1,84 @@
+import logging
+from django.db import transaction
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from .models import Transaction, Transfer
 from django.core.exceptions import ObjectDoesNotExist
-from .models import Bonus, Wallet
+from django.utils import timezone
+
+from .models import Transaction, Transfer, Bonus, Wallet, CasheBooking, Trip, Driver
+
+logger = logging.getLogger(__name__)
 
 @receiver(post_save, sender=Bonus)
 def update_wallet_on_bonus(sender, instance, created, **kwargs):
     """
-    إشارة تلقائية لتحديث رصيد المحفظة عند إضافة مكافأة
-    المهام الرئيسية:
-    1. التحقق من أن المكافأة جديدة (created=True)
-    2. البحث عن محفظة المستخدم
-    3. زيادة الرصيد بقيمة المكافأة
-    4. معالجة الأخطاء المحتملة
-    
-    المعلمات:
-    - sender: نموذج Bonus
-    - instance: كائن المكافأة الذي تم حفظه
-    - created: حالة الإنشاء (True/False)
+    تحديث رصيد المحفظة عند إنشاء مكافأة جديدة:
+      1. التأكد من أن المكافأة جديدة.
+      2. الحصول على محفظة المستخدم مع قفل الصف لتجنب التعارض.
+      3. التحقق من أن قيمة المكافأة أكبر من الصفر.
+      4. زيادة الرصيد وحفظ التحديث.
     """
-    
     if created:
         try:
-            # الحصول على محفظة المستخدم
-            user_wallet = Wallet.objects.get(user=instance.user)
-            
-            # التحقق من صحة المبلغ
-            if instance.amount <= 0:
-                raise ValueError("قيمة المكافأة يجب أن تكون أكبر من الصفر")
-                
-            # تحديث الرصيد
-            user_wallet.balance += instance.amount
-            user_wallet.save()
-            
+            with transaction.atomic():
+                user_wallet = Wallet.objects.select_for_update().get(user=instance.user)
+                if instance.amount <= 0:
+                    raise ValueError("قيمة المكافأة يجب أن تكون أكبر من الصفر.")
+                user_wallet.balance += instance.amount
+                user_wallet.save()
+                logger.info(f"تمت إضافة مكافأة بمبلغ {instance.amount} للمحفظة الخاصة بالمستخدم {instance.user.username}.")
         except Wallet.DoesNotExist:
-            raise ObjectDoesNotExist(f"المستخدم {instance.user} ليس لديه محفظة")
-            
+            logger.error(f"لم يتم العثور على محفظة للمستخدم {instance.user}.")
+            raise ObjectDoesNotExist(f"المستخدم {instance.user} ليس لديه محفظة.")
         except Exception as e:
-            # تسجيل الخطأ في نظام التسجيلات
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.error(f"فشل في إضافة المكافأة: {str(e)}")
+            logger.error(f"فشل تحديث المحفظة للمكافأة {instance.id}: {e}")
             raise
+
 @receiver(post_save, sender=Transaction)
 def update_wallet_balance(sender, instance, **kwargs):
+    """
+    تحديث رصيد المحفظة بناءً على نوع العملية:
+      - عند الشحن (charge) يتم زيادة الرصيد.
+      - عند السحب أو الدفع (withdraw, payment) يتم خصم المبلغ إذا كان الرصيد كافٍ.
+    """
     wallet = instance.wallet
-    if instance.transaction_type == 'charge':
-        wallet.balance += instance.amount
-    elif instance.transaction_type in ['withdraw', 'payment']:
-        if wallet.balance >= instance.amount:
-            wallet.balance -= instance.amount
-        else:
-            raise ValueError("رصيد غير كافي")
-    wallet.save()
+    try:
+        with transaction.atomic():
+            if instance.transaction_type == 'charge':
+                wallet.balance += instance.amount
+            elif instance.transaction_type in ['withdraw', 'payment']:
+                if wallet.balance >= instance.amount:
+                    wallet.balance -= instance.amount
+                else:
+                    raise ValueError("رصيد غير كافٍ.")
+            wallet.save()
+            logger.info(f"تم تحديث رصيد المحفظة {wallet.id} للعملية {instance.id}.")
+    except Exception as e:
+        logger.error(f"فشل تحديث رصيد المحفظة للعملية {instance.id}: {e}")
+        raise
 
 @receiver(post_save, sender=Transfer)
 def update_wallets_balance(sender, instance, **kwargs):
-    from_wallet = instance.from_wallet
-    to_wallet = instance.to_wallet
-    amount = instance.amount
+    """
+    عند إنشاء عملية تحويل، يتم:
+      1. الحصول على محفظة المرسل والمستقبل مع قفل الصف.
+      2. التحقق من أن محفظة المرسل تحتوي على رصيد كافٍ.
+      3. خصم المبلغ من محفظة المرسل وإضافته لمحفظة المستقبل.
+    """
+    try:
+        with transaction.atomic():
+            from_wallet = Wallet.objects.select_for_update().get(pk=instance.from_wallet.pk)
+            to_wallet = Wallet.objects.select_for_update().get(pk=instance.to_wallet.pk)
+            amount = instance.amount
 
-    if from_wallet.balance >= amount:
-        from_wallet.balance -= amount
-        to_wallet.balance += amount
-        from_wallet.save()
-        to_wallet.save()
-    else:
-        raise ValueError("رصيد غير كافي في محفظة المرسل")
+            if from_wallet.balance >= amount:
+                from_wallet.balance -= amount
+                to_wallet.balance += amount
+                from_wallet.save()
+                to_wallet.save()
+                logger.info(f"تم تحويل {amount} من المحفظة {from_wallet.id} إلى المحفظة {to_wallet.id}.")
+            else:
+                raise ValueError("رصيد غير كافٍ في محفظة المرسل.")
+    except Exception as e:
+        logger.error(f"فشل في معالجة التحويل {instance.id}: {e}")
+        raise
