@@ -34,7 +34,7 @@ class DriverAdmin(admin.ModelAdmin):
     raw_id_fields = ('user', 'vehicles')
 
 class TripAdmin(admin.ModelAdmin):
-    list_display = ('start_location', 'end_location', 'departure_time', 'status', 'driver')
+    list_display = ('from_location', 'to_location', 'departure_time', 'status', 'driver')
     list_filter = ('status',)
     raw_id_fields = ('driver',)
     readonly_fields = ('route_coordinates',)

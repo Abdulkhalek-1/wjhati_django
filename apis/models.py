@@ -1,6 +1,6 @@
 from django.db import models
 from django.utils.translation import gettext_lazy as _
-from django.contrib.auth.models import AbstractUser,User
+from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator, MaxValueValidator, RegexValidator
 from django.db.models import Index
 from django.db.models.signals import post_save
@@ -314,23 +314,23 @@ class Trip(BaseModel):
         COMPLETED = 'completed', _("مكتمل")
         CANCELLED = 'cancelled', _("ملغاة")
 
-    start_location = models.CharField(max_length=100, verbose_name=_("نقطة الانطلاق"))
-    end_location = models.CharField(max_length=100, verbose_name=_("وجهة الوصول"))
+    from_location = models.CharField(max_length=255, verbose_name=_("من"))
+    to_location = models.CharField(max_length=255, verbose_name=_("إلى"))
     departure_time = models.DateTimeField(verbose_name=_("وقت المغادرة"))
     estimated_duration = models.DurationField(
         null=True,
         blank=True,
         verbose_name=_("المدة المتوقعة")
     )
-    available_seats = models.IntegerField(
-        validators=[MinValueValidator(1)],
-        verbose_name=_("المقاعد المتاحة")
-    )
+    available_seats = models.IntegerField(default=0, verbose_name=_("عدد المقاعد المتاحة"))
     price_per_seat = models.DecimalField(
         max_digits=10,
         decimal_places=2,
-        verbose_name=_("سعر المقعد")
-    )
+        null=True,
+        blank=True,
+        verbose_name=_("السعر لكل مقعد")
+)
+
     status = models.CharField(
         max_length=20,
         choices=Status.choices,
@@ -360,7 +360,7 @@ class Trip(BaseModel):
         ordering = ['-departure_time']
 
     def __str__(self):
-        return f"{self.start_location} → {self.end_location} ({self.departure_time})"
+        return f"{self.from_location} → {self.to_location} ({self.departure_time})"
 
 
 # ============================
@@ -1026,24 +1026,3 @@ class CasheItemDelivery(BaseModel):
 
     def __str__(self):
         return f"طلب توصيل #{self.id} - {self.user.user.username}"
-
-
-# ============================
-# إشارات (Signals)
-# ============================
-@receiver(post_save, sender=User)
-def create_user_wallet(sender, instance, created, **kwargs):
-    """
-    عند إنشاء مستخدم جديد، يتم إنشاء محفظة افتراضية له تلقائيًا.
-    """
-    if created:
-        Wallet.objects.create(user=instance)
-
-
-@receiver(post_save, sender=Rating)
-def update_driver_rating(sender, instance, **kwargs):
-    """
-    تحديث التقييم العام للسائق عند إضافة تقييم جديد.
-    """
-    driver = instance.driver
-    driver.update_rating()

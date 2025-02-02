@@ -4,8 +4,9 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.core.exceptions import ObjectDoesNotExist
 from django.utils import timezone
-
-from .models import Transaction, Transfer, Bonus, Wallet, CasheBooking, Trip, Driver
+from django.contrib.auth.models import User
+from .models import Transaction, Transfer, Bonus, Wallet, CasheBooking, Trip, Driver,Rating
+from .utils import merge_bookings_into_trip
 
 logger = logging.getLogger(__name__)
 
@@ -82,3 +83,30 @@ def update_wallets_balance(sender, instance, **kwargs):
     except Exception as e:
         logger.error(f"فشل في معالجة التحويل {instance.id}: {e}")
         raise
+
+
+# ============================
+# إشارات (Signals)
+# ============================
+@receiver(post_save, sender=User)
+def create_user_wallet(sender, instance, created, **kwargs):
+    """
+    عند إنشاء مستخدم جديد، يتم إنشاء محفظة افتراضية له تلقائيًا.
+    """
+    if created:
+        Wallet.objects.create(user=instance)
+
+
+@receiver(post_save, sender=Rating)
+def update_driver_rating(sender, instance, **kwargs):
+    """
+    تحديث التقييم العام للسائق عند إضافة تقييم جديد.
+    """
+    driver = instance.driver
+    driver.update_rating()
+
+
+@receiver(post_save, sender=CasheBooking)
+def handle_booking_post_save(sender, instance, created, **kwargs):
+    if created and instance.status == CasheBooking.Status.PENDING:
+        merge_bookings_into_trip()
