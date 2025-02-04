@@ -6,7 +6,8 @@ import os
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-
+GDAL_LIBRARY_PATH = r"C:\CGDAL\bin\gdal.dll"
+os.environ['GDAL_LIBRARY_PATH'] = GDAL_LIBRARY_PATH
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
@@ -29,6 +30,8 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'apis',
     'rest_framework',
+    'django.contrib.gis',
+    'Ai'
 
 ]
 
@@ -69,7 +72,7 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
+        'ENGINE': 'django.contrib.gis.db.backends.postgis',
         'NAME': 'nam',
         'USER': 'postgres',
         'PASSWORD': 'nahari',

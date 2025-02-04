@@ -6,7 +6,6 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.utils import timezone
 from django.contrib.auth.models import User
 from .models import Transaction, Transfer, Bonus, Wallet, CasheBooking, Trip, Driver,Rating
-from .utils import merge_bookings_into_trip
 
 logger = logging.getLogger(__name__)
 
@@ -83,8 +82,6 @@ def update_wallets_balance(sender, instance, **kwargs):
     except Exception as e:
         logger.error(f"فشل في معالجة التحويل {instance.id}: {e}")
         raise
-
-
 # ============================
 # إشارات (Signals)
 # ============================
@@ -95,18 +92,3 @@ def create_user_wallet(sender, instance, created, **kwargs):
     """
     if created:
         Wallet.objects.create(user=instance)
-
-
-@receiver(post_save, sender=Rating)
-def update_driver_rating(sender, instance, **kwargs):
-    """
-    تحديث التقييم العام للسائق عند إضافة تقييم جديد.
-    """
-    driver = instance.driver
-    driver.update_rating()
-
-
-@receiver(post_save, sender=CasheBooking)
-def handle_booking_post_save(sender, instance, created, **kwargs):
-    if created and instance.status == CasheBooking.Status.PENDING:
-        merge_bookings_into_trip()
