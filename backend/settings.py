@@ -31,7 +31,6 @@ INSTALLED_APPS = [
     'apis',
     'rest_framework',
     'django.contrib.gis',
-    'Ai'
 
 ]
 

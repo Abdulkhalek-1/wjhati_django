@@ -2,12 +2,7 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator, MaxValueValidator, RegexValidator
-from django.db.models import Index
-from django.db.models.signals import post_save
-from django.dispatch import receiver
-from django.utils import timezone
 import uuid
-from .utils import *
 # ============================
 # نموذج أساسي للوقت
 # ============================
@@ -304,7 +299,8 @@ class Driver(BaseModel):
 # ============================
 # نموذج الرحلة
 # ============================
-class Trip(BaseModel):
+
+class Trip(models.Model):
     """
     يمثل الرحلة مع تفاصيل مثل نقطة الانطلاق، وجهة الوصول، السائق، وغيرها.
     """
@@ -329,8 +325,7 @@ class Trip(BaseModel):
         null=True,
         blank=True,
         verbose_name=_("السعر لكل مقعد")
-)
-
+    )
     status = models.CharField(
         max_length=20,
         choices=Status.choices,
@@ -363,10 +358,12 @@ class Trip(BaseModel):
         return f"{self.from_location} → {self.to_location} ({self.departure_time})"
 
 
+
 # ============================
 # نموذج الحجز للرحلات
 # ============================
-class Booking(BaseModel):
+
+class Booking(models.Model):
     """
     يمثل حجز رحلة من قبل العميل مع تفاصيل المقاعد والسعر.
     """
@@ -383,7 +380,8 @@ class Booking(BaseModel):
         verbose_name=_("الرحلة")
     )
     customer = models.ForeignKey(
-        Client,
+        # افترض أن لديك نموذج Client معرف مسبقاً
+        'Client',
         on_delete=models.CASCADE,
         related_name='bookings',
         verbose_name=_("العميل")
@@ -840,7 +838,8 @@ class Bonus(BaseModel):
 # ============================
 # نموذج محطات توقف الرحلة
 # ============================
-class TripStop(BaseModel):
+
+class TripStop(models.Model):
     """
     يمثل محطة توقف خلال الرحلة مع ترتيبها ووقت الوصول المتوقع.
     """
@@ -867,7 +866,6 @@ class TripStop(BaseModel):
 
     def __str__(self):
         return f"{self.trip} - {self.location} ({self.order})"
-
 
 # ============================
 # نموذج شحنات تسليم العناصر
@@ -935,7 +933,8 @@ class ItemDelivery(BaseModel):
 # ============================
 # نموذج الحجز المسبق (CasheBooking)
 # ============================
-class CasheBooking(BaseModel):
+
+class CasheBooking(models.Model):
     """
     يمثل حجز مسبق للرحلة مع تفاصيل المواقع ووقت المغادرة وعدد الركاب.
     """
@@ -946,7 +945,8 @@ class CasheBooking(BaseModel):
         CANCELLED = 'cancelled', _("ملغى")
 
     user = models.ForeignKey(
-        Client,
+        # افترض أن لديك نموذج Client معرف مسبقاً
+        'Client',
         on_delete=models.CASCADE,
         related_name='cashe_bookings',
         verbose_name=_("المستخدم")

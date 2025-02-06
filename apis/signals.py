@@ -3,10 +3,9 @@ from django.db import transaction
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.core.exceptions import ObjectDoesNotExist
-from django.utils import timezone
+from .utils import *
 from django.contrib.auth.models import User
 from .models import Transaction, Transfer, Bonus, Wallet, CasheBooking, Trip, Driver,Rating
-
 logger = logging.getLogger(__name__)
 
 @receiver(post_save, sender=Bonus)
@@ -92,3 +91,37 @@ def create_user_wallet(sender, instance, created, **kwargs):
     """
     if created:
         Wallet.objects.create(user=instance)
+
+@receiver(post_save, sender=Trip)
+def process_trip_after_save(sender, instance, created, **kwargs):
+    """
+    عند حفظ نموذج الرحلة، يتم:
+    1. التحقق من وجود بيانات route_coordinates.
+    2. حساب وإنشاء نقاط التوقف تلقائيًا كل 5 كم.
+    3. فحص ودمج الرحلات المشابهة باستخدام خوارزمية Fréchet.
+    """
+    if instance.route_coordinates:
+        compute_trip_stops(instance, stop_interval=5)
+        merge_similar_trips(instance)
+
+@receiver(post_save, sender=Trip)
+def process_trip_after_save(sender, instance, created, **kwargs):
+    """
+    عند حفظ نموذج الرحلة، يتم:
+    1. التحقق من وجود بيانات route_coordinates.
+    2. حساب وإنشاء نقاط التوقف تلقائيًا كل 5 كم.
+    3. فحص ودمج الرحلات المشابهة باستخدام خوارزمية Fréchet.
+    """
+    if instance.route_coordinates:
+        compute_trip_stops(instance, stop_interval=5)
+        merge_similar_trips(instance)
+
+@receiver(post_save, sender=CasheBooking)
+def process_cashe_booking_after_save(sender, instance, created, **kwargs):
+    """
+    عند إنشاء طلب حجز مسبق (CasheBooking) يتم معالجة الطلب:
+    - إذا كان الطلب جديدًا يتم استدعاء دالة process_cashe_booking لنقل البيانات
+      إلى جدول الحجوزات وإنشاء رحلة جديدة أو استخدام الرحلة المطابقة.
+    """
+    if created and instance.status == CasheBooking.Status.PENDING:
+        process_cashe_booking(instance)

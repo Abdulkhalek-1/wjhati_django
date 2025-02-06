@@ -1,203 +1,227 @@
-import logging
-from math import radians, cos, sin, asin, sqrt
-from datetime import timedelta
+import json
+import math
+from .models import Trip,TripStop,Booking,CasheBooking,Driver
+from django.utils.translation import gettext_lazy as _
 
-from django.db import transaction
-from django.db.models.signals import post_save
-from django.dispatch import receiver
-
-# إعداد مسجل الأخطاء
-logger = logging.getLogger(__name__)
-
-###########################
-# دوال مساعدة للتحليل الجغرافي
-###########################
-
-def haversine(lon1, lat1, lon2, lat2):
+def process_cashe_booking(booking, stop_proximity_threshold=1.0):
     """
-    احسب المسافة بين نقطتين جغرافيتين باستخدام معادلة Haversine.
-    تُرجع الدالة المسافة بالكيلومترات.
+    تقوم هذه الدالة بمعالجة طلب الحجز المسبق (CasheBooking) كالآتي:
+    1. تحويل بيانات المواقع إلى إحداثيات.
+    2. البحث عن رحلة موجودة (قيد الانتظار) تحتوي على نقاط توقف قريبة من
+       موقعي الانطلاق والوصول.
+    3. إذا وُجدت رحلة مطابقة يتم تسجيل الحجز بها.
+    4. إذا لم توجد، يتم إنشاء رحلة جديدة باستخدام بيانات الطلب وحساب نقاط التوقف.
+    5. يتم نقل بيانات الطلب إلى جدول الحجوزات (Booking) وتأكيد الحجز.
     """
-    # تحويل الدرجات إلى راديان
-    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
-    dlon = lon2 - lon1
-    dlat = lat2 - lat1
-    a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
-    c = 2 * asin(sqrt(a))
-    km = 6371 * c  # نصف قطر الأرض بالكيلومترات
-    return km
+    # تحويل الموقع من نص إلى إحداثيات
+    from_coords = parse_location(booking.from_location)
+    to_coords = parse_location(booking.to_location)
+    if None in (from_coords[0], from_coords[1], to_coords[0], to_coords[1]):
+        # يمكن إضافة معالجة خطأ هنا
+        return
 
-def parse_location_string(location_str):
+    # البحث عن رحلة موجودة (مثلاً حالة PENDING) ونبحث في نقاط توقفها
+    candidate_trips = Trip.objects.filter(status=Trip.Status.PENDING, route_coordinates__isnull=False)
+    matched_trip = None
+    for trip in candidate_trips:
+        if is_point_near_stops(trip, from_coords, threshold=stop_proximity_threshold) and \
+           is_point_near_stops(trip, to_coords, threshold=stop_proximity_threshold):
+            matched_trip = trip
+            break
+
+    if matched_trip:
+        # تسجيل الحجز في الرحلة الموجودة
+        new_booking = Booking.objects.create(
+            trip=matched_trip,
+            customer=booking.user,  # نفترض أن حقل user في CasheBooking هو العميل
+            seats=[],  # يمكن تعبئتها بناءً على منطق آخر
+            total_price=0,  # يمكن حسابها بناءً على السعر والمسافة
+            status=Booking.Status.CONFIRMED
+        )
+        booking.status = CasheBooking.Status.ACCEPTED
+        booking.save()
+    else:
+        # لا توجد رحلة مطابقة، إذًا إنشاء رحلة جديدة
+        # اختيار سائق افتراضي من السائقين المتاحين
+        default_driver = Driver.objects.filter(is_available=True).first()
+        if not default_driver:
+            # يمكن رفع استثناء أو اتخاذ إجراء بديل
+            return
+
+        # لتوليد مسار بسيط نستخدم نقطتي البداية والنهاية فقط،
+        # ويمكن تعديل هذا الجزء لدمج API خارجي للحصول على مسار دقيق.
+        route = [
+            {"lat": from_coords[0], "lon": from_coords[1]},
+            {"lat": to_coords[0], "lon": to_coords[1]},
+        ]
+        new_trip = Trip.objects.create(
+            from_location=booking.from_location,
+            to_location=booking.to_location,
+            departure_time=booking.departure_time,
+            available_seats=default_driver.vehicles.first().capacity if default_driver.vehicles.exists() else 100,
+            driver=default_driver,
+            route_coordinates=json.dumps(route)
+        )
+        # بعد إنشاء الرحلة، سيتم حساب نقاط التوقف تلقائيًا بواسطة إشارة post_save الخاصة بـ Trip
+
+        # إنشاء حجز للرحلة الجديدة
+        new_booking = Booking.objects.create(
+            trip=new_trip,
+            customer=booking.user,
+            seats=[],
+            total_price=0,
+            status=Booking.Status.CONFIRMED
+        )
+        booking.status = CasheBooking.Status.ACCEPTED
+        booking.save()
+
+
+def haversine(lat1, lon1, lat2, lon2):
     """
-    تحويل سلسلة نصية تحتوي على إحداثيات بالشكل "lat, lon"
-    إلى زوج من القيم الرقمية (lon, lat).
-    تُعاد القيم بحيث يكون الترتيب (longitude, latitude) بما يتوافق مع دالة Haversine.
+    دالة لحساب المسافة (بالكيلومترات) بين نقطتين باستخدام صيغة haversine.
+    """
+    R = 6371  # نصف قطر الأرض بالكيلومتر
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    delta_phi = math.radians(lat2 - lat1)
+    delta_lambda = math.radians(lon2 - lon1)
+    a = math.sin(delta_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return R * c
+
+def discrete_frechet_distance(P, Q):
+    """
+    حساب المسافة المنفصلة لخوارزمية Fréchet بين مسارين (قائمتين من النقاط)
+    حيث تكون كل نقطة عبارة عن قاموس يحتوي على المفاتيح 'lat' و 'lon'.
+    """
+    n = len(P)
+    m = len(Q)
+    ca = [[-1 for _ in range(m)] for _ in range(n)]
+
+    def c(i, j):
+        if ca[i][j] > -1:
+            return ca[i][j]
+        d = haversine(P[i]['lat'], P[i]['lon'], Q[j]['lat'], Q[j]['lon'])
+        if i == 0 and j == 0:
+            ca[i][j] = d
+        elif i > 0 and j == 0:
+            ca[i][j] = max(c(i - 1, 0), d)
+        elif i == 0 and j > 0:
+            ca[i][j] = max(c(0, j - 1), d)
+        elif i > 0 and j > 0:
+            ca[i][j] = max(min(c(i - 1, j), c(i - 1, j - 1), c(i, j - 1)), d)
+        else:
+            ca[i][j] = float('inf')
+        return ca[i][j]
+
+    return c(n - 1, m - 1)
+
+def compute_trip_stops(trip, stop_interval=5):
+    """
+    دالة تقوم بحساب وإنشاء نقاط التوقف للرحلة (Trip) على طول المسار
+    كل stop_interval (افتراضي 5 كم). تفترض الدالة أن حقل route_coordinates
+    يحتوي على JSON يمثل قائمة من النقاط، حيث يحتوي كل عنصر على مفاتيح 'lat' و 'lon'.
+    """
+    if not trip.route_coordinates:
+        return
+
+    try:
+        route = json.loads(trip.route_coordinates)
+    except Exception as e:
+        # في حال وجود خطأ في تنسيق الإحداثيات
+        return
+
+    if not isinstance(route, list) or len(route) < 2:
+        return
+
+    # حذف نقاط التوقف الحالية (إن وجدت)
+    trip.stops.all().delete()
+
+    accumulated_distance = 0.0
+    target_distance = stop_interval  # المسافة المستهدفة لإنشاء محطة توقف
+    prev_point = route[0]
+    order = 1
+
+    # المرور عبر النقاط في المسار
+    for i in range(1, len(route)):
+        curr_point = route[i]
+        segment_distance = haversine(prev_point['lat'], prev_point['lon'],
+                                     curr_point['lat'], curr_point['lon'])
+        # بينما تكون المسافة التراكمية ضمن هذا المقطع أكبر من الهدف
+        while accumulated_distance + segment_distance >= target_distance:
+            remaining = target_distance - accumulated_distance
+            fraction = remaining / segment_distance if segment_distance != 0 else 0
+            # الاستيفاء الخطي لحساب الإحداثيات
+            stop_lat = prev_point['lat'] + fraction * (curr_point['lat'] - prev_point['lat'])
+            stop_lon = prev_point['lon'] + fraction * (curr_point['lon'] - prev_point['lon'])
+            # إنشاء محطة التوقف في قاعدة البيانات
+            TripStop.objects.create(
+                trip=trip,
+                location=f"{stop_lat},{stop_lon}",
+                order=order
+            )
+            order += 1
+            # تحديث نقطة البداية للمقطع الحالي لتكون موقع المحطة الجديدة
+            prev_point = {'lat': stop_lat, 'lon': stop_lon}
+            segment_distance = haversine(prev_point['lat'], prev_point['lon'],
+                                         curr_point['lat'], curr_point['lon'])
+            accumulated_distance = 0.0
+            target_distance = stop_interval
+        accumulated_distance += segment_distance
+        prev_point = curr_point
+
+def merge_similar_trips(current_trip, distance_threshold=1.0):
+    """
+    دالة تفحص الرحلات المشابهة (استناداً إلى المسافة المحسوبة بخوارزمية Fréchet)
+    وتقوم بدمج الحجوزات من الرحلات المتشابهة في الرحلة الحالية.
+    distance_threshold: الحد الأعلى للمسافة (بالكيلومتر) الذي تعتبر به الرحلتين متشابهتين.
+    """
+    if not current_trip.route_coordinates:
+        return
+
+    try:
+        current_route = json.loads(current_trip.route_coordinates)
+    except Exception:
+        return
+
+    # البحث عن رحلات أخرى تحتوي على مسار صالح وليست الرحلة الحالية نفسها
+    similar_trips = Trip.objects.exclude(id=current_trip.id).filter(route_coordinates__isnull=False)
+
+    for other_trip in similar_trips:
+        try:
+            other_route = json.loads(other_trip.route_coordinates)
+        except Exception:
+            continue
+        # حساب مسافة Fréchet بين المسارين
+        distance = discrete_frechet_distance(current_route, other_route)
+        if distance < distance_threshold:
+            # دمج الحجوزات: إعادة ربط الحجوزات بالرحلة الحالية
+            for booking in other_trip.bookings.all():
+                booking.trip = current_trip
+                booking.save()
+            # حذف الرحلة المكررة بعد الدمج
+            other_trip.delete()
+
+def parse_location(location_str):
+    """
+    تحويل سلسلة إحداثيات من الشكل "lat,lon" إلى Tuple (lat, lon) كقيم float.
     """
     try:
         lat_str, lon_str = location_str.split(',')
-        lat = float(lat_str.strip())
-        lon = float(lon_str.strip())
-        return lon, lat
-    except Exception as e:
-        logger.error("خطأ في تحويل سلسلة الإحداثيات '%s': %s", location_str, e)
+        return float(lat_str.strip()), float(lon_str.strip())
+    except Exception:
         return None, None
 
-def compute_route_coordinates(from_location, to_location):
+def is_point_near_stops(trip, point, threshold=1.0):
     """
-    دالة افتراضية لحساب مسار الرحلة.
-    في هذا المثال، نقوم بإرجاع قائمة تحتوي على نقطتين (البداية والنهاية).
-    يمكنك تعديل هذه الدالة لاستدعاء خدمة خارحية لحساب الطريق الفعلي.
+    تفحص ما إذا كانت النقطة (tuple: (lat, lon)) تقع ضمن مسافة threshold (بالكيلومتر)
+    من إحدى نقاط التوقف الخاصة بالرحلة.
     """
-    from_lon, from_lat = parse_location_string(from_location)
-    to_lon, to_lat = parse_location_string(to_location)
-    if None in (from_lon, from_lat, to_lon, to_lat):
-        return None
-    # مثال: إرجاع نقطة البداية والنهاية فقط
-    return [
-        {"lon": from_lon, "lat": from_lat},
-        {"lon": to_lon, "lat": to_lat}
-    ]
-
-###########################
-# دوال دمج الحجوزات وإنشاء الرحلات
-###########################
-
-def get_available_driver():
-    """
-    دالة افتراضية لاختيار سائق متاح.
-    يجب تعديلها لتناسب منطق تطبيقك.
-    """
-    from .models import Driver  # تأكد من تعديل مسار النموذج حسب مشروعك
-    driver = Driver.objects.filter(is_available=True).first()
-    return driver
-
-def calculate_total_price(cashe_booking):
-    """
-    دالة افتراضية لحساب السعر الإجمالي بناءً على بيانات الحجز المسبق.
-    يمكنك تعديل هذا المنطق بناءً على احتياجات التطبيق.
-    """
-    price_per_passenger = 10.00
-    return cashe_booking.passengers * price_per_passenger
-
-def merge_bookings_into_trip():
-    """
-    تقوم هذه الدالة بالبحث عن الحجوزات المسبقة (CasheBooking) ذات الحالة PENDING،
-    وتجميعها بناءً على القرب الجغرافي (المواقع والوقت) بحيث يتم دمج الحجوزات المتقاربة في رحلة واحدة.
-    
-    يُفترض أن نموذج CasheBooking يحتوي على الحقول التالية:
-      - from_location: سلسلة نصية بصيغة "lat, lon"
-      - to_location: سلسلة نصية بصيغة "lat, lon"
-      - departure_time: حقل التاريخ والوقت
-      - passengers: عدد الركاب
-      - user: المستخدم الذي قام بالحجز
-      - status: حالة الحجز
-    كما يُفترض أن نموذج Trip يحتوي على الحقول المناسبة لاستقبال بيانات الموقع والوقت.
-    """
-    from .models import CasheBooking, Trip, Booking
-
-    # جلب الحجوزات المسبقة ذات الحالة PENDING
-    pending_bookings = CasheBooking.objects.filter(status=CasheBooking.Status.PENDING)
-
-    # معايير التجميع
-    DISTANCE_THRESHOLD = 0.5  # بالكيلومتر
-    TIME_DELTA = timedelta(minutes=15)  # فرق زمني مسموح
-
-    booking_clusters = []
-
-    def add_to_cluster(booking):
-        """
-        محاولة إضافة الحجز إلى إحدى المجموعات الموجودة إذا كانت المواقع والوقت متقاربين.
-        """
-        for cluster in booking_clusters:
-            ref_booking = cluster[0]
-            # استخراج الإحداثيات من الحقول النصية
-            ref_from_lon, ref_from_lat = parse_location_string(ref_booking.from_location)
-            ref_to_lon, ref_to_lat = parse_location_string(ref_booking.to_location)
-
-            booking_from_lon, booking_from_lat = parse_location_string(booking.from_location)
-            booking_to_lon, booking_to_lat = parse_location_string(booking.to_location)
-
-            if None in (ref_from_lon, ref_from_lat, ref_to_lon, ref_to_lat,
-                        booking_from_lon, booking_from_lat, booking_to_lon, booking_to_lat):
-                continue
-
-            distance_from = haversine(ref_from_lon, ref_from_lat, booking_from_lon, booking_from_lat)
-            distance_to = haversine(ref_to_lon, ref_to_lat, booking_to_lon, booking_to_lat)
-            time_diff = abs(ref_booking.departure_time - booking.departure_time)
-
-            if distance_from <= DISTANCE_THRESHOLD and distance_to <= DISTANCE_THRESHOLD and time_diff <= TIME_DELTA:
-                cluster.append(booking)
-                return True
-        return False
-
-    # تجميع الحجوزات في مجموعات بناءً على القرب الجغرافي والزمني
-    for booking in pending_bookings:
-        if not add_to_cluster(booking):
-            booking_clusters.append([booking])
-
-    # استخدام معاملة قاعدة البيانات لضمان تماسك العملية
-    with transaction.atomic():
-        for cluster in booking_clusters:
-            if cluster:
-                driver = get_available_driver()
-                if driver:
-                    ref_booking = cluster[0]
-                    try:
-                        trip = Trip.objects.create(
-                            driver=driver,
-                            from_location=ref_booking.from_location,
-                            to_location=ref_booking.to_location,
-                            departure_time=ref_booking.departure_time
-                            # يمكنك إضافة حقول إضافية حسب الحاجة
-                        )
-                    except Exception as e:
-                        logger.error("خطأ عند إنشاء الرحلة: %s", e)
-                        continue
-
-                    # تحويل كل حجز مسبق في المجموعة إلى حجز نهائي وربطه بالرحلة
-                    for cashe_booking in cluster:
-                        try:
-                            seats = [f"seat_{i+1}" for i in range(cashe_booking.passengers)]
-                            total_price = calculate_total_price(cashe_booking)
-                            Booking.objects.create(
-                                trip=trip,
-                                customer=cashe_booking.user,
-                                seats=seats,
-                                total_price=total_price,
-                                status=Booking.Status.PENDING  # أو الحالة المناسبة وفقًا لمنطق التطبيق
-                            )
-                            cashe_booking.status = CasheBooking.Status.ACCEPTED
-                            cashe_booking.save()
-                        except Exception as e:
-                            logger.error("خطأ عند تحويل حجز مسبق إلى حجز نهائي: %s", e)
-                else:
-                    logger.warning(
-                        "لا يوجد سائق متاح للرحلة من %s إلى %s في %s",
-                        ref_booking.from_location,
-                        ref_booking.to_location,
-                        ref_booking.departure_time
-                    )
-
-###########################
-# إشارات (Signals) لتحديث التقييم ودمج الحجوزات
-###########################
-
-@receiver(post_save, sender='apis.Rating')  # استبدل 'your_app' باسم التطبيق الخاص بك
-def update_driver_rating(sender, instance, **kwargs):
-    """
-    تحديث التقييم العام للسائق عند إضافة تقييم جديد.
-    """
-    driver = instance.driver
-    try:
-        driver.update_rating()
-    except Exception as e:
-        logger.error("خطأ عند تحديث تقييم السائق: %s", e)
-
-@receiver(post_save, sender='apis.CasheBooking')  # استبدل 'your_app' باسم التطبيق الخاص بك
-def handle_booking_post_save(sender, instance, created, **kwargs):
-    """
-    عند حفظ حجز مسبق جديد (CasheBooking) بحالة PENDING، يتم محاولة دمجه في رحلة.
-    """
-    if created and instance.status == instance.Status.PENDING:
-        # استدعاء الدالة بدون تمرير instance، لأنها تتعامل مع جميع الحجوزات PENDING
-        merge_bookings_into_trip()
+    stops = trip.stops.all()
+    for stop in stops:
+        stop_lat, stop_lon = parse_location(stop.location)
+        if stop_lat is None or stop_lon is None:
+            continue
+        if haversine(stop_lat, stop_lon, point[0], point[1]) <= threshold:
+            return True
+    return False
