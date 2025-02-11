@@ -52,8 +52,9 @@ class TripViewSet(viewsets.ModelViewSet):
     serializer_class = TripSerializer
 
 class BookingViewSet(viewsets.ModelViewSet):
-    queryset = Booking.objects.all()
+    queryset = Booking.objects.filter(status='confirmed')
     serializer_class = BookingSerializer
+    permission_classes = [IsAuthenticated]
 
 class RatingViewSet(viewsets.ModelViewSet):
     queryset = Rating.objects.all()
