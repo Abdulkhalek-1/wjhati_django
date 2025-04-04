@@ -3,28 +3,15 @@ from django.utils.translation import gettext_lazy as _
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator, MaxValueValidator, RegexValidator
 import uuid
-# ============================
-# نموذج أساسي للوقت
-# ============================
+
 class BaseModel(models.Model):
-    """
-    نموذج أساسي يحتوي على حقول تتبع وقت الإنشاء والتحديث.
-    """
     created_at = models.DateTimeField(auto_now_add=True, verbose_name=_("تاريخ الإنشاء"))
     updated_at = models.DateTimeField(auto_now=True, verbose_name=_("تاريخ التحديث"))
 
     class Meta:
         abstract = True
         ordering = ['-created_at']
-
-
-# ============================
-# نموذج العميل
-# ============================
 class Client(BaseModel):
-    """
-    يمثل بيانات العميل المربوطة بحساب المستخدم (نموذج المستخدم الافتراضي).
-    """
     user = models.OneToOneField(
         User,
         on_delete=models.CASCADE,
