@@ -94,7 +94,6 @@ REST_FRAMEWORK = {
     ),
 }
 
-# الإعدادات الدولي
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
 USE_I18N = True
@@ -105,4 +104,4 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CORS_ALLOW_ALL_ORIGINS = True
-CORS_ALLOW_CREDENTIALS = True  # تم تصحيح الخطأ الإملائي
+CORS_ALLOW_CREDENTIALS = True  
