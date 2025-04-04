@@ -36,13 +36,7 @@ class Client(BaseModel):
         return f"{self.user.username} - {self.city}"
 
 
-# ============================
-# نموذج المحفظة الإلكترونية
-# ============================
 class Wallet(BaseModel):
-    """
-    يمثل المحفظة الإلكترونية للمستخدم مع طرق للتعامل مع الرصيد.
-    """
     CURRENCY_CHOICES = (
         ('YE', 'ريال يمني'),
     )
@@ -92,14 +86,7 @@ class Wallet(BaseModel):
         else:
             raise ValueError(_("رصيد غير كافٍ."))
 
-
-# ============================
-# نموذج المعاملات المالية
-# ============================
 class Transaction(BaseModel):
-    """
-    يمثل عملية مالية (شحن، تحويل، سحب، دفع، استرداد) على المحفظة.
-    """
     TRANSACTION_TYPES = [
         ('charge', _("شحن")),
         ('transfer', _("تحويل")),
@@ -173,13 +160,8 @@ class Transaction(BaseModel):
         super().save(*args, **kwargs)
 
 
-# ============================
-# نموذج المركبة
-# ============================
+
 class Vehicle(BaseModel):
-    """
-    يمثل المركبة مع بياناتها الأساسية مثل النوع واللوحة والموديل.
-    """
     VEHICLE_TYPES = (
         ('sedan', _("سيدان")),
         ('suv', _("SUV")),
