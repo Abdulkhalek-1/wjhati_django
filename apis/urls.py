@@ -1,12 +1,13 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import *
-from .views import WalletViewSet
+from .views import WalletViewSet,TransactionViewSet
 
 router = DefaultRouter()
 router.register(r'wallets', WalletViewSet, basename='wallet')
+router.register(r'user', UserViewSet)
 router.register(r'clients', ClientViewSet)
-router.register(r'transactions', TransactionViewSet)
+router.register(r'transactions', TransactionViewSet, basename='Transaction')
 router.register(r'vehicles', VehicleViewSet)
 router.register(r'drivers', DriverViewSet)
 router.register(r'trips', TripViewSet)

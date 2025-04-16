@@ -521,7 +521,7 @@ class Message(BaseModel):
     )
     content = models.TextField(verbose_name=_("المحتوى"))
     attachment = models.FileField(
-        upload_to='chat_attachments/',
+        upload_to='',
         null=True,
         blank=True,
         verbose_name=_("مرفق")

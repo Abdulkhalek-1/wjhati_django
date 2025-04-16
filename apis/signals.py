@@ -104,18 +104,6 @@ def process_trip_after_save(sender, instance, created, **kwargs):
         compute_trip_stops(instance, stop_interval=5)
         merge_similar_trips(instance)
 
-@receiver(post_save, sender=Trip)
-def process_trip_after_save(sender, instance, created, **kwargs):
-    """
-    عند حفظ نموذج الرحلة، يتم:
-    1. التحقق من وجود بيانات route_coordinates.
-    2. حساب وإنشاء نقاط التوقف تلقائيًا كل 5 كم.
-    3. فحص ودمج الرحلات المشابهة باستخدام خوارزمية Fréchet.
-    """
-    if instance.route_coordinates:
-        compute_trip_stops(instance, stop_interval=5)
-        merge_similar_trips(instance)
-
 @receiver(post_save, sender=CasheBooking)
 def process_cashe_booking_after_save(sender, instance, created, **kwargs):
     """

@@ -9,6 +9,10 @@ from .serializers import WalletSerializer
 from rest_framework.permissions import IsAuthenticated
 from .models import Trip
 
+class UserViewSet(viewsets.ModelViewSet):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer

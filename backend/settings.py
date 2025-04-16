@@ -42,7 +42,8 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = 'backend.urls'
-
+MEDIA_URL = ''  # ← الجزء الأول من المسار
+MEDIA_ROOT = os.path.join(BASE_DIR, 'chat_attachments')
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
