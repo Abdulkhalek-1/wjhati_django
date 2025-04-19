@@ -82,8 +82,12 @@ class SupportTicketViewSet(viewsets.ModelViewSet):
     serializer_class = SupportTicketSerializer
 
 class NotificationViewSet(viewsets.ModelViewSet):
-    queryset = Notification.objects.all()
     serializer_class = NotificationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        return Notification.objects.filter(user=user)
 
 class TransferViewSet(viewsets.ModelViewSet):
     queryset = Transfer.objects.all()
