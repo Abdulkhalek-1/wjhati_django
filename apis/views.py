@@ -56,17 +56,22 @@ class TripViewSet(viewsets.ModelViewSet):
     serializer_class = TripSerializer
 
 class BookingViewSet(viewsets.ModelViewSet):
-    queryset = Booking.objects.filter(status='confirmed')
     serializer_class = BookingSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Booking.objects.filter(customer=self.request.user, status='confirmed')
 
 class RatingViewSet(viewsets.ModelViewSet):
     queryset = Rating.objects.all()
     serializer_class = RatingSerializer
 
 class ChatViewSet(viewsets.ModelViewSet):
-    queryset = Chat.objects.all()
     serializer_class = ChatSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Chat.objects.filter(participants=self.request.user)
 
 class MessageViewSet(viewsets.ModelViewSet):
     queryset = Message.objects.all()

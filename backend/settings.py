@@ -42,7 +42,7 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = 'backend.urls'
-MEDIA_URL = ''  # ← الجزء الأول من المسار
+MEDIA_URL = '/chat_attachments/'  # ← الجزء الأول من المسار
 MEDIA_ROOT = os.path.join(BASE_DIR, 'chat_attachments')
 TEMPLATES = [
     {

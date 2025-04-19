@@ -334,7 +334,7 @@ class Booking(models.Model):
     )
     customer = models.ForeignKey(
         # افترض أن لديك نموذج Client معرف مسبقاً
-        'Client',
+        User,
         on_delete=models.CASCADE,
         related_name='bookings',
         verbose_name=_("العميل")
@@ -364,7 +364,7 @@ class Booking(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.customer.user.username} - {self.trip} ({len(self.seats)} مقاعد)"
+        return f"{self.customer.username} - {self.trip} ({len(self.seats)} مقاعد)"
 
 
 
@@ -419,8 +419,9 @@ class Rating(BaseModel):
 
 class Chat(BaseModel):
  
-    participants = models.ManyToManyField(
+    participants = models.OneToOneField(
         User,
+        on_delete=models.CASCADE,
         related_name='chats',
         verbose_name=_("المشاركون")
     )
@@ -439,10 +440,7 @@ class Chat(BaseModel):
 
     def __str__(self):
         if self.is_group:
-            return self.title or f"Group Chat #{self.id}"
-        participants = self.participants.all()
-        if participants.count() >= 2:
-            return f"Chat بين {participants[0]} و {participants[1]}"
+            return self.title or f"Group Chat #{self.id}"    
         return f"Chat #{self.id}"
 
 
