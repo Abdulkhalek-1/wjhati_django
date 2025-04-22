@@ -1,7 +1,8 @@
 import json
 import math
-from .models import Trip,TripStop,Booking,CasheBooking,Driver
+from .models import Trip,TripStop,Booking,CasheBooking,Driver,Bonus
 from django.utils.translation import gettext_lazy as _
+from django.contrib.auth.models import User
 
 def process_cashe_booking(booking, stop_proximity_threshold=1.0):
     """
@@ -225,3 +226,36 @@ def is_point_near_stops(trip, point, threshold=1.0):
         if haversine(stop_lat, stop_lon, point[0], point[1]) <= threshold:
             return True
     return False
+
+
+def calculate_user_rewards(user):
+    trips = user.trips.count()
+    bonus_amount = (trips // 10) * 5  # كل 10 رحلات = 5 ريال
+    if bonus_amount > 0:
+        Bonus.objects.create(user=user, amount=bonus_amount, reason='loyalty')
+        user.wallet.credit(bonus_amount)
+
+
+
+POINTS_MAP = {
+    'trip': 10,
+    'delivery': 15,
+    'referral': 25,
+}
+
+def reward_user_points(user: User, activity_type: str):
+    """
+    Award points for user activities and convert to Bonus if threshold reached.
+    """
+    profile = user.profile  # assuming a Profile model with points field
+    profile.points += POINTS_MAP.get(activity_type, 0)
+    profile.save()
+
+    if profile.points >= 100:
+        Bonus.objects.create(
+            user=user,
+            amount=1000,
+            reason='مكافأة النقاط'
+        )
+        profile.points -= 100
+        profile.save()

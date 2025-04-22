@@ -3,6 +3,7 @@ from django.utils.translation import gettext_lazy as _
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator, MaxValueValidator, RegexValidator
 import uuid
+from django.utils import timezone
 
 class BaseModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name=_("تاريخ الإنشاء"))
@@ -40,19 +41,8 @@ class Wallet(BaseModel):
     CURRENCY_CHOICES = (
         ('YE', 'ريال يمني'),
     )
-    
-    user = models.OneToOneField(
-        User,
-        on_delete=models.CASCADE,
-        related_name='wallet',
-        verbose_name=_("المستخدم")
-    )
-    balance = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0.00,
-        verbose_name=_("الرصيد")
-    )
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='wallet')
+    balance = models.DecimalField(max_digits=15, decimal_places=2, default=0)
     currency = models.CharField(
         max_length=3,
         choices=CURRENCY_CHOICES,
@@ -65,6 +55,15 @@ class Wallet(BaseModel):
         help_text=_("يمنع إجراء المعاملات إذا كانت المحفظة محظورة")
     )
 
+    def credit(self, amount):
+        self.balance += amount
+        self.save()
+
+    def debit(self, amount):
+        if self.balance < amount:
+            raise ValueError("رصيد غير كافٍ.")
+        self.balance -= amount
+        self.save()
     class Meta:
         verbose_name = _("محفظة")
         verbose_name_plural = _("المحافظ")
@@ -235,6 +234,22 @@ class Driver(BaseModel):
     )
     total_trips = models.IntegerField(default=0, verbose_name=_("إجمالي الرحلات"))
     is_available = models.BooleanField(default=True, verbose_name=_("متاح للرحلات"))
+    current_latitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        verbose_name=_("خط العرض الحالي"),
+        help_text=_("خط العرض للموقع الحالي للسائق")
+    )
+    current_longitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        verbose_name=_("خط الطول الحالي"),
+        help_text=_("خط الطول للموقع الحالي للسائق")
+    )
 
     class Meta:
         verbose_name = _("سائق")
@@ -697,6 +712,10 @@ class Subscription(BaseModel):
         verbose_name=_("الرحلات المتبقية")
     )
 
+    def renew(self):
+        self.start_date = timezone.now().date()
+        self.end_date = self.start_date + timezone.timedelta(days=self.plan.duration_days)
+        self.save()
     class Meta:
         verbose_name = _("اشتراك")
         verbose_name_plural = _("الاشتراكات")
