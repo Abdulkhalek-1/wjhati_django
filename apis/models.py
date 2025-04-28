@@ -319,6 +319,7 @@ class Trip(models.Model):
         verbose_name=_("المدة المتوقعة")
     )
     available_seats = models.IntegerField(default=0, verbose_name=_("عدد المقاعد المتاحة"))
+    distance_km = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     price_per_seat = models.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -941,7 +942,7 @@ class CasheBooking(models.Model):
     class Status(models.TextChoices):
         PENDING = 'pending', _("قيد الانتظار")
         ACCEPTED = 'accepted', _("مقبول")
-        COMPLETED = 'completed', _("مكتمل")
+        FAILED = 'failed', _("فشل")  # التأكد من وجود هذا التعريف
         CANCELLED = 'cancelled', _("ملغى")
 
     user = models.ForeignKey(

@@ -165,11 +165,3 @@ class TripOptimizer:
         logger.error(f"Error processing cluster: {error}")
         self.handle_failed_cluster(cluster)
 
-# --------------------------------------------------
-# مثال على الاستخدام:
-# --------------------------------------------------
-optimizer = TripOptimizer(
-    time_window=20,
-    max_detour=7
-)
-optimizer.process_bookings()
