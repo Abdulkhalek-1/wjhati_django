@@ -3,16 +3,28 @@ from django.utils.translation import gettext_lazy as _
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator, MaxValueValidator, RegexValidator
 import uuid
-from django.utils import timezone
-
+# ============================
+# نموذج أساسي للوقت
+# ============================
 class BaseModel(models.Model):
+    """
+    نموذج أساسي يحتوي على حقول تتبع وقت الإنشاء والتحديث.
+    """
     created_at = models.DateTimeField(auto_now_add=True, verbose_name=_("تاريخ الإنشاء"))
     updated_at = models.DateTimeField(auto_now=True, verbose_name=_("تاريخ التحديث"))
 
     class Meta:
         abstract = True
         ordering = ['-created_at']
+
+
+# ============================
+# نموذج العميل
+# ============================
 class Client(BaseModel):
+    """
+    يمثل بيانات العميل المربوطة بحساب المستخدم (نموذج المستخدم الافتراضي).
+    """
     user = models.OneToOneField(
         User,
         on_delete=models.CASCADE,
@@ -37,12 +49,29 @@ class Client(BaseModel):
         return f"{self.user.username} - {self.city}"
 
 
+# ============================
+# نموذج المحفظة الإلكترونية
+# ============================
 class Wallet(BaseModel):
+    """
+    يمثل المحفظة الإلكترونية للمستخدم مع طرق للتعامل مع الرصيد.
+    """
     CURRENCY_CHOICES = (
         ('YE', 'ريال يمني'),
     )
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='wallet')
-    balance = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='wallet',
+        verbose_name=_("المستخدم")
+    )
+    balance = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=0.00,
+        verbose_name=_("الرصيد")
+    )
     currency = models.CharField(
         max_length=3,
         choices=CURRENCY_CHOICES,
@@ -55,15 +84,6 @@ class Wallet(BaseModel):
         help_text=_("يمنع إجراء المعاملات إذا كانت المحفظة محظورة")
     )
 
-    def credit(self, amount):
-        self.balance += amount
-        self.save()
-
-    def debit(self, amount):
-        if self.balance < amount:
-            raise ValueError("رصيد غير كافٍ.")
-        self.balance -= amount
-        self.save()
     class Meta:
         verbose_name = _("محفظة")
         verbose_name_plural = _("المحافظ")
@@ -85,7 +105,14 @@ class Wallet(BaseModel):
         else:
             raise ValueError(_("رصيد غير كافٍ."))
 
+
+# ============================
+# نموذج المعاملات المالية
+# ============================
 class Transaction(BaseModel):
+    """
+    يمثل عملية مالية (شحن، تحويل، سحب، دفع، استرداد) على المحفظة.
+    """
     TRANSACTION_TYPES = [
         ('charge', _("شحن")),
         ('transfer', _("تحويل")),
@@ -159,8 +186,13 @@ class Transaction(BaseModel):
         super().save(*args, **kwargs)
 
 
-
+# ============================
+# نموذج المركبة
+# ============================
 class Vehicle(BaseModel):
+    """
+    يمثل المركبة مع بياناتها الأساسية مثل النوع واللوحة والموديل.
+    """
     VEHICLE_TYPES = (
         ('sedan', _("سيدان")),
         ('suv', _("SUV")),
@@ -210,7 +242,13 @@ class Vehicle(BaseModel):
         return f"{self.get_vehicle_type_display()} - {self.plate_number}"
 
 
+# ============================
+# نموذج السائق
+# ============================
 class Driver(BaseModel):
+    """
+    يمثل بيانات السائق مع معلومات الرخصة والمركبات المرتبطة والتقييم.
+    """
     user = models.OneToOneField(
         User,
         on_delete=models.CASCADE,
@@ -234,22 +272,6 @@ class Driver(BaseModel):
     )
     total_trips = models.IntegerField(default=0, verbose_name=_("إجمالي الرحلات"))
     is_available = models.BooleanField(default=True, verbose_name=_("متاح للرحلات"))
-    current_latitude = models.DecimalField(
-        max_digits=9,
-        decimal_places=6,
-        null=True,
-        blank=True,
-        verbose_name=_("خط العرض الحالي"),
-        help_text=_("خط العرض للموقع الحالي للسائق")
-    )
-    current_longitude = models.DecimalField(
-        max_digits=9,
-        decimal_places=6,
-        null=True,
-        blank=True,
-        verbose_name=_("خط الطول الحالي"),
-        help_text=_("خط الطول للموقع الحالي للسائق")
-    )
 
     class Meta:
         verbose_name = _("سائق")
@@ -274,8 +296,14 @@ class Driver(BaseModel):
             self.save()
 
 
-class Trip(models.Model):
+# ============================
+# نموذج الرحلة
+# ============================
 
+class Trip(models.Model):
+    """
+    يمثل الرحلة مع تفاصيل مثل نقطة الانطلاق، وجهة الوصول، السائق، وغيرها.
+    """
     class Status(models.TextChoices):
         PENDING = 'pending', _("قيد الانتظار")
         IN_PROGRESS = 'in_progress', _("قيد التنفيذ")
@@ -331,10 +359,14 @@ class Trip(models.Model):
 
 
 
-
+# ============================
+# نموذج الحجز للرحلات
+# ============================
 
 class Booking(models.Model):
-
+    """
+    يمثل حجز رحلة من قبل العميل مع تفاصيل المقاعد والسعر.
+    """
     class Status(models.TextChoices):
         PENDING = 'pending', _("قيد الانتظار")
         CONFIRMED = 'confirmed', _("مؤكد")
@@ -349,7 +381,7 @@ class Booking(models.Model):
     )
     customer = models.ForeignKey(
         # افترض أن لديك نموذج Client معرف مسبقاً
-        User,
+        'Client',
         on_delete=models.CASCADE,
         related_name='bookings',
         verbose_name=_("العميل")
@@ -379,11 +411,16 @@ class Booking(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.customer.username} - {self.trip} ({len(self.seats)} مقاعد)"
+        return f"{self.customer.user.username} - {self.trip} ({len(self.seats)} مقاعد)"
 
 
-
+# ============================
+# نموذج تقييم الرحلة
+# ============================
 class Rating(BaseModel):
+    """
+    يمثل تقييم العميل للسائق بعد الرحلة.
+    """
     RATING_CHOICES = [
         (1, '★☆☆☆☆'),
         (2, '★★☆☆☆'),
@@ -432,11 +469,15 @@ class Rating(BaseModel):
         return f"{self.rated_by.user.username} → {self.driver.user.username} ({self.rating}/5)"
 
 
+# ============================
+# نموذج المحادثة والدردشة
+# ============================
 class Chat(BaseModel):
- 
-    participants = models.OneToOneField(
+    """
+    يمثل دردشة بين مستخدمين، وقد تكون محادثة فردية أو جماعية.
+    """
+    participants = models.ManyToManyField(
         User,
-        on_delete=models.CASCADE,
         related_name='chats',
         verbose_name=_("المشاركون")
     )
@@ -455,7 +496,10 @@ class Chat(BaseModel):
 
     def __str__(self):
         if self.is_group:
-            return self.title or f"Group Chat #{self.id}"    
+            return self.title or f"Group Chat #{self.id}"
+        participants = self.participants.all()
+        if participants.count() >= 2:
+            return f"Chat بين {participants[0]} و {participants[1]}"
         return f"Chat #{self.id}"
 
 
@@ -496,9 +540,13 @@ class Message(BaseModel):
         return f"{self.sender.username}: {self.content[:50]}"
 
 
-
+# ============================
+# نموذج تذاكر الدعم الفني
+# ============================
 class SupportTicket(BaseModel):
- 
+    """
+    يمثل تذكرة دعم فني مع تحديد أولوية الحالة والسائق المعني (إذا وُجد).
+    """
     STATUS_CHOICES = [
         ('open', _("مفتوح")),
         ('in_progress', _("قيد المتابعة")),
@@ -554,9 +602,13 @@ class SupportTicket(BaseModel):
         return f"{self.user.username}: {self.subject} ({self.get_status_display()})"
 
 
-
+# ============================
+# نموذج الإشعارات
+# ============================
 class Notification(BaseModel):
-
+    """
+    يمثل إشعار للمستخدم بأنشطة مختلفة في النظام.
+    """
     user = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
@@ -596,9 +648,13 @@ class Notification(BaseModel):
         return f"{self.title} - {self.user.username}"
 
 
-
+# ============================
+# نموذج التحويل المالي بين المحافظ
+# ============================
 class Transfer(BaseModel):
-
+    """
+    يمثل عملية تحويل مالي بين محافظ المستخدمين.
+    """
     class Status(models.TextChoices):
         PENDING = 'pending', _("قيد الانتظار")
         COMPLETED = 'completed', _("مكتمل")
@@ -660,8 +716,13 @@ class Transfer(BaseModel):
         self.save()
 
 
+# ============================
+# نموذج خطط الاشتراك
+# ============================
 class SubscriptionPlan(BaseModel):
-
+    """
+    يمثل خطة الاشتراك الشهرية مع تفاصيل السعر والمدة والحد الأقصى للرحلات.
+    """
     name = models.CharField(max_length=100, verbose_name=_("اسم الخطة"))
     description = models.TextField(verbose_name=_("الوصف"))
     price = models.DecimalField(
@@ -690,8 +751,13 @@ class SubscriptionPlan(BaseModel):
         return f"{self.name} ({self.price} SAR)"
 
 
+# ============================
+# نموذج الاشتراك
+# ============================
 class Subscription(BaseModel):
-
+    """
+    يمثل اشتراك السائق في إحدى الخطط.
+    """
     driver = models.ForeignKey(
         Driver,
         on_delete=models.CASCADE,
@@ -712,10 +778,6 @@ class Subscription(BaseModel):
         verbose_name=_("الرحلات المتبقية")
     )
 
-    def renew(self):
-        self.start_date = timezone.now().date()
-        self.end_date = self.start_date + timezone.timedelta(days=self.plan.duration_days)
-        self.save()
     class Meta:
         verbose_name = _("اشتراك")
         verbose_name_plural = _("الاشتراكات")
@@ -728,6 +790,9 @@ class Subscription(BaseModel):
         return f"{self.driver.user.username} - {self.plan}"
 
 
+# ============================
+# نموذج المكافآت
+# ============================
 class Bonus(BaseModel):
     """
     يمثل مكافأة مالية للمستخدم نتيجة إحالة أو عرض ترويجي أو غير ذلك.
@@ -770,10 +835,14 @@ class Bonus(BaseModel):
         return f"{self.user.username} - {self.amount} ريال يمني ({self.get_reason_display()})"
 
 
-
+# ============================
+# نموذج محطات توقف الرحلة
+# ============================
 
 class TripStop(models.Model):
-
+    """
+    يمثل محطة توقف خلال الرحلة مع ترتيبها ووقت الوصول المتوقع.
+    """
     trip = models.ForeignKey(
         Trip,
         on_delete=models.CASCADE,
@@ -798,9 +867,13 @@ class TripStop(models.Model):
     def __str__(self):
         return f"{self.trip} - {self.location} ({self.order})"
 
-
+# ============================
+# نموذج شحنات تسليم العناصر
+# ============================
 class ItemDelivery(BaseModel):
-
+    """
+    يمثل شحنة لتوصيل عنصر مع تفاصيل الوزن، التأمين وكود الشحنة.
+    """
     class Status(models.TextChoices):
         PENDING = 'pending', _("قيد الانتظار")
         IN_TRANSIT = 'in_transit', _("قيد النقل")
@@ -857,10 +930,14 @@ class ItemDelivery(BaseModel):
         return f"شحنة #{self.delivery_code} - {self.get_status_display()}"
 
 
-
+# ============================
+# نموذج الحجز المسبق (CasheBooking)
+# ============================
 
 class CasheBooking(models.Model):
-  
+    """
+    يمثل حجز مسبق للرحلة مع تفاصيل المواقع ووقت المغادرة وعدد الركاب.
+    """
     class Status(models.TextChoices):
         PENDING = 'pending', _("قيد الانتظار")
         ACCEPTED = 'accepted', _("مقبول")
@@ -904,9 +981,13 @@ class CasheBooking(models.Model):
         return f"حجز مسبق #{self.id} - {self.user.user.username}"
 
 
-
+# ============================
+# نموذج طلب توصيل مسبق (CasheItemDelivery)
+# ============================
 class CasheItemDelivery(BaseModel):
-
+    """
+    يمثل طلب توصيل مسبق لعنصر مع تحديد إذا ما كان عاجلًا.
+    """
     class Status(models.TextChoices):
         PENDING = 'pending', _("قيد الانتظار")
         ACCEPTED = 'accepted', _("مقبول")

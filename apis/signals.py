@@ -5,8 +5,7 @@ from django.dispatch import receiver
 from django.core.exceptions import ObjectDoesNotExist
 from .utils import *
 from django.contrib.auth.models import User
-from .models import Transaction, Transfer, Bonus, Wallet, CasheBooking, Trip, Chat, Subscription, Notification
-
+from .models import Transaction, Transfer, Bonus, Wallet, CasheBooking, Trip, Driver,Rating
 logger = logging.getLogger(__name__)
 
 @receiver(post_save, sender=Bonus)
@@ -92,7 +91,6 @@ def create_user_wallet(sender, instance, created, **kwargs):
     """
     if created:
         Wallet.objects.create(user=instance)
-        Chat.objects.create(participants=instance,title='الدعم')
 
 @receiver(post_save, sender=Trip)
 def process_trip_after_save(sender, instance, created, **kwargs):
@@ -115,7 +113,3 @@ def process_cashe_booking_after_save(sender, instance, created, **kwargs):
     """
     if created and instance.status == CasheBooking.Status.PENDING:
         process_cashe_booking(instance)
-
-
-
-
