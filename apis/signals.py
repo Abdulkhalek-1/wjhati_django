@@ -6,7 +6,6 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.auth.models import User
 from django.db import close_old_connections
 from .models import Transaction, Transfer, Bonus, Wallet, CasheBooking, Trip
-from .utils import TripProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -90,44 +89,3 @@ class WalletSignals:
         except Exception as e:
             logger.error(f"فشل في معالجة التحويل {instance.id}: {e}")
             raise
-
-class TripSignals:
-    """إشارات متعلقة بالرحلات والحجوزات"""
-    
-    @receiver(post_save, sender=Trip)
-    def process_trip_after_save(sender, instance, created, **kwargs):
-        """معالجة الرحلة بعد الحفظ مع منع التكرار"""
-        if not instance.route_coordinates or hasattr(instance, '_processing'):
-            return
-        
-        instance._processing = True  # علامة لمنع التكرار
-        
-        try:
-            with transaction.atomic():
-                # تحديث الحقول دون استدعاء save()
-                update_data = {}
-                if not instance.price_per_seat:
-                    update_data['price_per_seat'] = 50.00                
-                if update_data:
-                    Trip.objects.filter(pk=instance.pk).update(**update_data)
-                
-                TripProcessor.compute_trip_stops(instance)
-                TripProcessor.merge_similar_trips(instance)
-                
-        except Exception as e:
-            logger.error(f"خطأ في معالجة الرحلة: {e}")
-        finally:
-            del instance._processing
-
-    @receiver(post_save, sender=CasheBooking)
-    def handle_cashe_booking(sender, instance, created, **kwargs):
-        """معالجة الحجز المسبق مع إدارة الأخطاء"""
-        if created and instance.status == CasheBooking.Status.PENDING:
-            try:
-                with transaction.atomic():
-                    TripProcessor.process_cashe_booking(instance)
-            except Exception as e:
-                logger.error(f"فشل في معالجة الحجز: {e}")
-                CasheBooking.objects.filter(pk=instance.pk).update(status=CasheBooking.Status.FAILED)
-                close_old_connections()
-                

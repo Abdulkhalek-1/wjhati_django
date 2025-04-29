@@ -359,7 +359,20 @@ class Trip(models.Model):
             models.Index(fields=['status']),
         ]
         ordering = ['-departure_time']
-
+    def update_availability(self):
+        """تحديث المقاعد المتاحة وحالة الرحلة"""
+        total_booked = self.bookings.aggregate(
+            total=models.Sum('passengers')
+        )['total'] or 0
+        
+        self.available_seats = self.vehicle.capacity - total_booked
+        
+        if self.available_seats <= 0 and self.status != self.Status.FULL:
+            self.status = self.Status.FULL
+        elif self.available_seats > 0 and self.status == self.Status.FULL:
+            self.status = self.Status.PENDING
+            
+        self.save()
     def __str__(self):
         return f"{self.from_location} → {self.to_location} ({self.departure_time})"
     def save(self, *args, **kwargs):
