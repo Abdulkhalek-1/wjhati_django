@@ -65,11 +65,15 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.contrib.gis.db.backends.postgis',
-        'NAME': 'nam',
+        'NAME': 'mnm',
         'USER': 'postgres',
         'PASSWORD': 'nahari',
         'HOST': 'localhost',
         'PORT': '5432',
+        'CONN_MAX_AGE': 300,  # زيادة عمر الاتصال
+        'OPTIONS': {
+            'connect_timeout': 30,  # زيادة مهلة الاتصال
+        }
     }
 }
 

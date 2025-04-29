@@ -107,10 +107,7 @@ class TripSignals:
                 # تحديث الحقول دون استدعاء save()
                 update_data = {}
                 if not instance.price_per_seat:
-                    update_data['price_per_seat'] = 50.00
-                if not instance.available_seats:
-                    update_data['available_seats'] = 100
-                
+                    update_data['price_per_seat'] = 50.00                
                 if update_data:
                     Trip.objects.filter(pk=instance.pk).update(**update_data)
                 
@@ -133,3 +130,4 @@ class TripSignals:
                 logger.error(f"فشل في معالجة الحجز: {e}")
                 CasheBooking.objects.filter(pk=instance.pk).update(status=CasheBooking.Status.FAILED)
                 close_old_connections()
+                

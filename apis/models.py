@@ -305,10 +305,15 @@ class Trip(models.Model):
     يمثل الرحلة مع تفاصيل مثل نقطة الانطلاق، وجهة الوصول، السائق، وغيرها.
     """
     class Status(models.TextChoices):
-        PENDING = 'pending', _("قيد الانتظار")
-        IN_PROGRESS = 'in_progress', _("قيد التنفيذ")
-        COMPLETED = 'completed', _("مكتمل")
-        CANCELLED = 'cancelled', _("ملغاة")
+        PENDING = 'pending', _('قيد الانتظار')
+        IN_PROGRESS = 'in_progress', _('قيد التنفيذ')
+        COMPLETED = 'completed', _('مكتملة')
+        CANCELLED = 'cancelled', _('ملغية')
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING
+    )
 
     from_location = models.CharField(max_length=255, verbose_name=_("من"))
     to_location = models.CharField(max_length=255, verbose_name=_("إلى"))
@@ -357,7 +362,11 @@ class Trip(models.Model):
 
     def __str__(self):
         return f"{self.from_location} → {self.to_location} ({self.departure_time})"
-
+    def save(self, *args, **kwargs):
+        """منع التحديث عند اكتمال الرحلة"""
+        if self.status == self.Status.IN_PROGRESS:
+            raise ValueError("لا يمكن تعديل الرحلة أثناء التنفيذ")
+        super().save(*args, **kwargs)
 
 
 # ============================
