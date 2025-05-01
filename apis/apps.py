@@ -16,7 +16,7 @@ class ApisConfig(AppConfig):
             while True:
                 try:
                     # استدعاء الأمر الخاص بك
-                    call_command('dbscan_clustering', '--eps', '0.2', '--min_samples', '3')
+                    call_command('dbscan_clustering', '--eps', '0.1', '--min_samples', '3')
                 except Exception as e:
                     # هنا يمكنك تسجيل الخطأ في لوج أو إرسال تنبيه
                     print(f"[DBSCAN Scheduler] Error: {e}")

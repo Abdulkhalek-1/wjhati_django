@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+  <meta charset="UTF-8" />
+  <title>توليد بيانات السائقين عشوائية</title>
+  <style>
+    body { font-family: sans-serif; padding: 1rem; }
+    button { padding: .5rem 1rem; font-size: 1rem; margin-right: .5rem; }
+    pre { background: #f4f4f4; padding: 1rem; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <h1>توليد بيانات سائقين عشوائية</h1>
+  <p>كل 10 ثوانٍ سيتم إرسال سجل سائق جديد إلى الـ API.</p>
+  <button id="start">ابدأ الإرسال</button>
+  <button id="stop" disabled>أوقف الإرسال</button>
+
+  <h2>آخر سائق أُرسل:</h2>
+  <pre id="lastJson">لا شيء بعد.</pre>
+
+  <script>
+    // عدّل هذا إلى endpoint السائقين في مشروعك
+    const API_URL = 'http://localhost:8000/drivers/';
+
+    let intervalId = null;
+    let nextUserId    = 2;  // يبدأ من 2
+    let nextVehicleId = 2;  // يبدأ من 2
+
+    // دالة لتوليد رقم رخصة عشوائي (مثلاً 8 أحرف وأرقام)
+    function randomLicense() {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let s = '';
+      for (let i = 0; i < 8; i++) {
+        s += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return s;
+    }
+
+    // دالة لتوليد تقييم عشوائي بين 1.0 و5.0 بدرجة عشرية واحدة
+    function randomRating() {
+      return parseFloat((Math.random() * 4 + 1).toFixed(1));
+    }
+
+    // دالة لتوليد عدد رحلات عشوائي بين 0 و100
+    function randomTrips() {
+      return Math.floor(Math.random() * 101);
+    }
+
+    // توليد جسم JSON للسائق
+    function generateDriver() {
+      const driver = {
+        license_number: randomLicense(),
+        rating: randomRating(),
+        total_trips: randomTrips(),
+        is_available: Math.random() < 0.7,  // 70% متاحون
+        user: nextUserId,
+        vehicles: [ nextVehicleId ]
+      };
+
+      // تحديث المعرفات للتالي
+      nextUserId++;
+      nextVehicleId++;
+
+      return driver;
+    }
+
+    // إرسال دالة
+    async function sendDriver() {
+      const drv = generateDriver();
+      document.getElementById('lastJson').textContent = JSON.stringify(drv, null, 2);
+
+      try {
+        const resp = await fetch(API_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+            // أضف Authorization إذا لزم
+          },
+          body: JSON.stringify(drv)
+        });
+        if (!resp.ok) {
+          console.error('خطأ في إرسال السائق:', resp.status, await resp.text());
+        } else {
+          console.log('تم إرسال السائق بنجاح:', await resp.json());
+        }
+      } catch (err) {
+        console.error('فشل الاتصال بـ API:', err);
+      }
+    }
+
+    // تحكّم بأزرار البدء والإيقاف
+    document.getElementById('start').onclick = () => {
+      if (!intervalId) {
+        sendDriver();
+        intervalId = setInterval(sendDriver, 1);
+        document.getElementById('start').disabled = true;
+        document.getElementById('stop').disabled = false;
+      }
+    };
+    document.getElementById('stop').onclick = () => {
+      clearInterval(intervalId);
+      intervalId = null;
+      document.getElementById('start').disabled = false;
+      document.getElementById('stop').disabled = true;
+    };
+  </script>
+</body>
+</html>

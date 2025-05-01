@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+  <meta charset="UTF-8" />
+  <title>توليد حجوزات واقعية</title>
+  <style>
+    body { font-family: sans-serif; padding: 1rem; }
+    button { padding: .5rem 1rem; font-size: 1rem; margin-right: 0.5rem; }
+    pre { background: #f4f4f4; padding: 1rem; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <h1>توليد حجوزات واقعية للاختبار</h1>
+  <p>سيتم إرسال حجز جديد إلى الـ API.</p>
+  <button id="start">ابدأ الإرسال</button>
+  <button id="stop" disabled>أوقف الإرسال</button>
+  <h2>آخر حجز أُرسل:</h2>
+  <pre id="lastJson">لا شيء بعد.</pre>
+
+  <script>
+    const API_URL = 'http://127.0.0.1:8000/cashe-bookings/'; 
+    let intervalId;
+
+    // مواقع واقعية تمثل مناطق في صنعاء
+    const locations = [
+      "14.774521,44.426772", "14.776812,44.428112", "14.775400,44.427001", // التحرير
+      "14.800210,44.410001", "14.810003,44.420001", "14.820800,44.425100", // شيراتون
+      "14.850800,44.500001", "14.852000,44.501000", "14.853100,44.499900", // بيت بوس
+      "14.900000,44.600000", "14.910000,44.610000", "14.915000,44.615000", // شارع تعز
+      "14.765000,44.370000", "14.767000,44.372000", "14.770000,44.375000", // الحصبة
+      "14.860000,44.330000", "14.865000,44.332000", "14.870000,44.335000", // حدة
+      "14.935000,44.450000", "14.937000,44.452000"                        // السنينة
+    ];
+
+    function getRandomLocation() {
+      return locations[Math.floor(Math.random() * locations.length)];
+    }
+
+    function randomDepartureTime() {
+      const now = new Date();
+      const hoursOffset = Math.floor(Math.random() * 12);  // خلال 12 ساعة
+      const minutesOffset = Math.floor(Math.random() * 60);
+      now.setHours(now.getHours() + hoursOffset, now.getMinutes() + minutesOffset);
+      return now.toISOString();
+    }
+
+    function generateBooking() {
+      return {
+        from_location: getRandomLocation(),
+        to_location: getRandomLocation(),
+        departure_time: randomDepartureTime(),
+        passengers: Math.floor(Math.random() * 3) + 1,
+        status: 'pending',
+        notes: '',
+        user: Math.floor(Math.random() * 30) + 1  // user بين 1 و 30
+      };
+    }
+
+    async function sendBooking() {
+      const booking = generateBooking();
+      document.getElementById('lastJson').textContent = JSON.stringify(booking, null, 2);
+      try {
+        const resp = await fetch(API_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(booking)
+        });
+        if (!resp.ok) {
+          console.error('خطأ في الإرسال:', resp.status, await resp.text());
+        } else {
+          console.log('تم الإرسال بنجاح:', await resp.json());
+        }
+      } catch (err) {
+        console.error('فشل الاتصال بالـ API:', err);
+      }
+    }
+
+    document.getElementById('start').onclick = () => {
+      if (!intervalId) {
+        sendBooking();  // إرسال أول مرة
+        intervalId = setInterval(sendBooking, 1);  // كل 10 ثوانٍ
+        document.getElementById('start').disabled = true;
+        document.getElementById('stop').disabled = false;
+      }
+    };
+
+    document.getElementById('stop').onclick = () => {
+      clearInterval(intervalId);
+      intervalId = null;
+      document.getElementById('start').disabled = false;
+      document.getElementById('stop').disabled = true;
+    };
+  </script>
+</body>
+</html>

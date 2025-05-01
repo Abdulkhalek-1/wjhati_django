@@ -255,6 +255,7 @@ class Driver(BaseModel):
         related_name='driver',
         verbose_name=_("المستخدم")
     )
+    where_location = models.CharField(max_length=255, verbose_name=_("وين"))
     license_number = models.CharField(
         max_length=100,
         unique=True,
