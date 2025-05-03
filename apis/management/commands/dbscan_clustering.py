@@ -1,20 +1,26 @@
+import logging
 import numpy as np
-from sklearn.cluster import DBSCAN
-from sklearn.preprocessing import StandardScaler
+from math import radians, cos, sin, asin, sqrt
 from django.core.management.base import BaseCommand
-from apis.models import CasheBooking, Trip, Driver, Vehicle, Booking
+from django.db import transaction
+from django.db.models import Prefetch
 from django.utils.timezone import now
+
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import DBSCAN
+
+from apis.models import CasheBooking, Trip, Driver, Booking, Vehicle
+
+logger = logging.getLogger(__name__)
 
 
 def haversine_distance(lat1, lon1, lat2, lon2):
-    from math import radians, cos, sin, asin, sqrt
     lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
     dlon = lon2 - lon1
     dlat = lat2 - lat1
     a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
     c = 2 * asin(sqrt(a))
-    km = 6371 * c
-    return km
+    return 6371 * c
 
 
 class Command(BaseCommand):
@@ -28,7 +34,15 @@ class Command(BaseCommand):
         eps = options['eps']
         min_samples = options['min_samples']
 
-        bookings = CasheBooking.objects.filter(status=CasheBooking.Status.PENDING)
+        try:
+            bookings = CasheBooking.objects.filter(status=CasheBooking.Status.PENDING).only(
+                'id', 'from_location', 'to_location', 'departure_time', 'passengers', 'user'
+            )
+        except Exception as e:
+            logger.exception("فشل في جلب الحجوزات: %s", e)
+            self.stdout.write(self.style.ERROR('فشل في جلب الحجوزات.'))
+            return
+
         if not bookings.exists():
             self.stdout.write(self.style.WARNING('لا توجد حجوزات معلقة.'))
             return
@@ -42,80 +56,102 @@ class Command(BaseCommand):
                 coords.append([lat1, lon1, lat2, lon2])
                 valid_bookings.append(b)
             except Exception as e:
-                self.stdout.write(self.style.ERROR(f'خطأ في الإحداثيات للحجز {b.id}: {e}'))
+                logger.error(f'خطأ في إحداثيات الحجز {b.id}: {e}')
 
         if not coords:
             self.stdout.write(self.style.ERROR('لا توجد إحداثيات صالحة.'))
             return
 
-        X = StandardScaler().fit_transform(np.array(coords))
-        labels = DBSCAN(eps=eps, min_samples=min_samples).fit_predict(X)
+        try:
+            X = StandardScaler().fit_transform(np.array(coords))
+            labels = DBSCAN(eps=eps, min_samples=min_samples).fit_predict(X)
+        except Exception as e:
+            logger.exception("فشل في تجميع DBSCAN: %s", e)
+            self.stdout.write(self.style.ERROR(f'فشل في تجميع DBSCAN: {e}'))
+            return
 
         clusters = set(labels)
         if -1 in clusters:
             clusters.remove(-1)
+
+        if not clusters:
+            self.stdout.write(self.style.WARNING('لم يتم العثور على عناقيد.'))
+            return
+
+        try:
+            all_drivers = Driver.objects.filter(is_available=True, vehicles__isnull=False).prefetch_related('vehicles').select_related('user').distinct()
+        except Exception as e:
+            logger.exception("فشل في جلب السائقين: %s", e)
+            self.stdout.write(self.style.ERROR('فشل في جلب السائقين.'))
+            return
+
+        if not all_drivers.exists():
+            self.stdout.write(self.style.ERROR('لا يوجد سائقون متاحون.'))
+            return
 
         for cid in clusters:
             indices = [i for i, lbl in enumerate(labels) if lbl == cid]
             cluster_bookings = [valid_bookings[i] for i in indices]
             sample = cluster_bookings[0]
 
-            # اختيار أفضل سائق
-            all_drivers = Driver.objects.filter(is_available=True, vehicles__isnull=False).distinct()
-            if not all_drivers.exists():
-                self.stdout.write(self.style.ERROR('لا يوجد سائقون متاحون.'))
-                continue
-
             def score_driver(driver):
                 try:
-                    lat, lon = map(float, driver.where_location.split(','))
-                    booking_lat, booking_lon = map(float, sample.from_location.split(','))
-                    distance = haversine_distance(lat, lon, booking_lat, booking_lon)
-                except:
+                    d_lat, d_lon = map(float, driver.where_location.split(','))
+                    b_lat, b_lon = map(float, sample.from_location.split(','))
+                    distance = haversine_distance(d_lat, d_lon, b_lat, b_lon)
+                except Exception:
                     distance = float('inf')
-                return (-driver.rating, distance, driver.total_trips)
+                return (distance, -driver.rating, driver.total_trips)
 
             sorted_drivers = sorted(all_drivers, key=score_driver)
-            selected_driver = sorted_drivers[0]  # اختيار الأفضل أو الأول كخيار افتراضي
+            selected_driver = sorted_drivers[0]
             vehicle = selected_driver.vehicles.first()
+
             if not vehicle:
-                self.stdout.write(self.style.ERROR(f'السائق {selected_driver.id} ليس لديه مركبة.'))
+                logger.error(f'السائق {selected_driver.id} لا يملك مركبة.')
                 continue
 
-            trip = Trip.objects.create(
-                from_location=sample.from_location,
-                to_location=sample.to_location,
-                departure_time=sample.departure_time,
-                estimated_duration=None,
-                available_seats=vehicle.capacity,
-                distance_km=None,
-                price_per_seat=25.0,  # سعر افتراضي لكل راكب
-                driver=selected_driver,
-                route_coordinates='{}'
-            )
+            try:
+                with transaction.atomic():
+                    # تغيير حالة قبول السائق
+                    selected_driver.is_available = False
+                    selected_driver.save(update_fields=['is_available'])
 
-            current_seats = 0
-            for b in cluster_bookings:
-                if current_seats + b.passengers > vehicle.capacity:
-                    self.stdout.write(self.style.WARNING(f'تجاوز السعة في الرحلة {trip.id}، تجاهل حجز {b.id}'))
-                    continue
+                    trip = Trip.objects.create(
+                        from_location=sample.from_location,
+                        to_location=sample.to_location,
+                        departure_time=sample.departure_time or now(),
+                        estimated_duration=None,
+                        available_seats=vehicle.capacity,
+                        distance_km=None,
+                        price_per_seat=25.0,
+                        driver=selected_driver,
+                        route_coordinates='{}'
+                    )
 
-                Booking.objects.create(
-                    trip=trip,
-                    customer=b.user,
-                    seats=[str(i + 1) for i in range(current_seats, current_seats + b.passengers)],
-                    total_price=b.passengers * trip.price_per_seat,
-                    status=Booking.Status.CONFIRMED
-                )
-                current_seats += b.passengers
-                b.status = CasheBooking.Status.ACCEPTED
-                b.save()
+                    current_seats = 0
+                    for b in cluster_bookings:
+                        if current_seats + b.passengers > vehicle.capacity:
+                            self.stdout.write(self.style.WARNING(f'تجاوز السعة في الرحلة {trip.id}، تجاهل حجز {b.id}'))
+                            continue
 
-                trip.available_seats = vehicle.capacity - current_seats
-                trip.save()
+                        Booking.objects.create(
+                            trip=trip,
+                            customer=b.user,
+                            seats=[str(i + 1) for i in range(current_seats, current_seats + b.passengers)],
+                            total_price=b.passengers * trip.price_per_seat,
+                            status=Booking.Status.CONFIRMED
+                        )
+                        current_seats += b.passengers
+                        b.status = CasheBooking.Status.ACCEPTED
+                        b.save(update_fields=['status'])
 
-                if trip.available_seats == 0:
-                    trip.status = 'full'  # تأكد من وجود هذا الحقل أو الحالة
-                    trip.save()
+                    trip.available_seats = vehicle.capacity - current_seats
+                    if trip.available_seats == 0:
+                        trip.status = 'full'
+                    trip.save(update_fields=['available_seats', 'status'])
 
-            self.stdout.write(self.style.SUCCESS(f'تم إنشاء الرحلة {trip.id} وتعيين السائق {selected_driver.user.username}'))
+                    self.stdout.write(self.style.SUCCESS(f'تم إنشاء الرحلة {trip.id} وتعيين السائق {selected_driver.user.username}'))
+            except Exception as err:
+                logger.exception(f'فشل إنشاء الرحلة للمجموعة {cid}: {err}')
+                self.stdout.write(self.style.ERROR(f'فشل إنشاء الرحلة للمجموعة {cid}.'))
