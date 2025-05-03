@@ -34,15 +34,9 @@ class Command(BaseCommand):
         eps = options['eps']
         min_samples = options['min_samples']
 
-        try:
-            bookings = CasheBooking.objects.filter(status=CasheBooking.Status.PENDING).only(
-                'id', 'from_location', 'to_location', 'departure_time', 'passengers', 'user'
-            )
-        except Exception as e:
-            logger.exception("فشل في جلب الحجوزات: %s", e)
-            self.stdout.write(self.style.ERROR('فشل في جلب الحجوزات.'))
-            return
-
+        bookings = CasheBooking.objects.filter(status=CasheBooking.Status.PENDING).only(
+            'id', 'from_location', 'to_location', 'departure_time', 'passengers', 'user'
+        )
         if not bookings.exists():
             self.stdout.write(self.style.WARNING('لا توجد حجوزات معلقة.'))
             return
@@ -66,7 +60,6 @@ class Command(BaseCommand):
             X = StandardScaler().fit_transform(np.array(coords))
             labels = DBSCAN(eps=eps, min_samples=min_samples).fit_predict(X)
         except Exception as e:
-            logger.exception("فشل في تجميع DBSCAN: %s", e)
             self.stdout.write(self.style.ERROR(f'فشل في تجميع DBSCAN: {e}'))
             return
 
@@ -78,12 +71,7 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING('لم يتم العثور على عناقيد.'))
             return
 
-        try:
-            all_drivers = Driver.objects.filter(is_available=True, vehicles__isnull=False).prefetch_related('vehicles').select_related('user').distinct()
-        except Exception as e:
-            logger.exception("فشل في جلب السائقين: %s", e)
-            self.stdout.write(self.style.ERROR('فشل في جلب السائقين.'))
-            return
+        all_drivers = Driver.objects.filter(is_available=True, vehicles__isnull=False).prefetch_related('vehicles').select_related('user').distinct()
 
         if not all_drivers.exists():
             self.stdout.write(self.style.ERROR('لا يوجد سائقون متاحون.'))
@@ -113,10 +101,6 @@ class Command(BaseCommand):
 
             try:
                 with transaction.atomic():
-                    # تغيير حالة قبول السائق
-                    selected_driver.is_available = False
-                    selected_driver.save(update_fields=['is_available'])
-
                     trip = Trip.objects.create(
                         from_location=sample.from_location,
                         to_location=sample.to_location,
@@ -128,6 +112,10 @@ class Command(BaseCommand):
                         driver=selected_driver,
                         route_coordinates='{}'
                     )
+
+                    # تحديث حالة السائق إلى غير متاح مباشرة بعد إنشاء الرحلة
+                    selected_driver.is_available = False
+                    selected_driver.save(update_fields=['is_available'])
 
                     current_seats = 0
                     for b in cluster_bookings:
