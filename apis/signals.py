@@ -5,7 +5,7 @@ from django.dispatch import receiver
 from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.auth.models import User
 from django.db import close_old_connections
-from .models import Transaction, Transfer, Bonus, Wallet, CasheBooking, Trip
+from .models import Chat, Transaction, Transfer, Bonus, Wallet, CasheBooking, Trip
 
 logger = logging.getLogger(__name__)
 

@@ -21,7 +21,7 @@ class ApisConfig(AppConfig):
                     # هنا يمكنك تسجيل الخطأ في لوج أو إرسال تنبيه
                     print(f"[DBSCAN Scheduler] Error: {e}")
                 # انتظر ساعة (3600 ثانية) ثم أعد التشغيل
-                time.sleep(3600)
+                time.sleep(300)
 
         t = threading.Thread(target=run_scheduler, daemon=True)
         t.start()
