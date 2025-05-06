@@ -6,7 +6,8 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.auth.models import User
 from django.db import close_old_connections
 from .models import Chat, Transaction, Transfer, Bonus, Wallet, CasheBooking, Trip
-
+from .models import Notification
+from .utils import send_notification_to_user
 logger = logging.getLogger(__name__)
 
 class WalletSignals:
@@ -89,3 +90,13 @@ class WalletSignals:
         except Exception as e:
             logger.error(f"فشل في معالجة التحويل {instance.id}: {e}")
             raise
+
+
+@receiver(post_save, sender=Notification)
+def send_fcm_notification(sender, instance, created, **kwargs):
+    if created:
+        send_notification_to_user(
+            user=instance.user,
+            title=instance.title,
+            message=instance.message
+        )

@@ -8,6 +8,7 @@ from .models import Wallet
 from .serializers import WalletSerializer
 from rest_framework.permissions import IsAuthenticated
 from .models import Trip
+from rest_framework.views import APIView
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
@@ -130,3 +131,14 @@ class CasheBookingViewSet(viewsets.ModelViewSet):
 class CasheItemDeliveryViewSet(viewsets.ModelViewSet):
     queryset = CasheItemDelivery.objects.all()
     serializer_class = CasheItemDeliverySerializer
+
+
+class SaveFCMTokenView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        token = request.data.get("token")
+        if token:
+            FCMToken.objects.update_or_create(user=request.user, token=token)
+            return Response({"status": "تم حفظ التوكن"})
+        return Response({"error": "التوكن مفقود"}, status=400)
