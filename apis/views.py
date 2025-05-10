@@ -9,6 +9,9 @@ from .serializers import WalletSerializer
 from rest_framework.permissions import IsAuthenticated
 from .models import Trip
 from rest_framework.views import APIView
+import logging
+
+logger = logging.getLogger(__name__)
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
@@ -133,12 +136,44 @@ class CasheItemDeliveryViewSet(viewsets.ModelViewSet):
     serializer_class = CasheItemDeliverySerializer
 
 
+
 class SaveFCMTokenView(APIView):
     permission_classes = [IsAuthenticated]
-
+    
     def post(self, request):
-        token = request.data.get("token")
-        if token:
-            FCMToken.objects.update_or_create(user=request.user, token=token)
-            return Response({"status": "تم حفظ التوكن"})
-        return Response({"error": "التوكن مفقود"}, status=400)
+        token = request.data.get('token')
+        
+        if not token:
+            logger.warning('Attempt to save FCM token without providing token')
+            return Response(
+                {'error': 'Token is required.', 'code': 'missing_token'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        if not isinstance(token, str) or len(token) < 10:
+            logger.warning(f'Invalid token format: {token}')
+            return Response(
+                {'error': 'Invalid token format.', 'code': 'invalid_token'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        try:
+            obj, created = FCMToken.objects.update_or_create(
+                token=token,
+                defaults={'user': request.user}
+            )
+            
+            logger.info(f'FCM token {"created" if created else "updated"} for user {request.user.id}')
+            
+            return Response({
+                'message': 'Token saved successfully.',
+                'created': created,
+                'token_id': obj.id
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f'Error saving FCM token: {str(e)}', exc_info=True)
+            return Response(
+                {'error': 'Failed to save token.', 'code': 'server_error'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

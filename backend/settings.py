@@ -61,7 +61,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'backend.wsgi.application'
-
+FCM_API_KEY = "BFeDv5_dTasb2wGuhKHi7zFxMT3AS--63PW7H1fc23613NRGA9r5PQ3LhB0GhtpcQBB7AyyEAHae2m5udn86JJc	"  # استبدل هذا بمفتاح FCM الحقيقي الخاص بك
 DATABASES = {
     'default': {
         'ENGINE': 'django.contrib.gis.db.backends.postgis',

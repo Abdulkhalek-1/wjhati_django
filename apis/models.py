@@ -628,12 +628,38 @@ class SupportTicket(BaseModel):
 # نموذج حفظ التوكن للاشعارات
 # ============================
 class FCMToken(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="fcm_tokens")
-    token = models.CharField(max_length=255, unique=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    user = models.ForeignKey(
+        User, 
+        on_delete=models.CASCADE, 
+        related_name='fcm_tokens',
+        verbose_name=_("User")
+    )
+    token = models.CharField(
+        max_length=255, 
+        unique=True,
+        verbose_name=_("FCM Token")
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name=_("Created At")
+    )
+    device_info = models.JSONField(
+        null=True,
+        blank=True,
+        verbose_name=_("Device Information")
+    )
+    
+    class Meta:
+        verbose_name = _("FCM Token")
+        verbose_name_plural = _("FCM Tokens")
+        indexes = [
+            models.Index(fields=['created_at']),
+            models.Index(fields=['user']),
+        ]
+        ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.user.username} - {self.token[:15]}"
+        return f"{self.user.username} - {self.token[:10]}..."
 # ============================
 # نموذج الإشعارات
 # ============================
