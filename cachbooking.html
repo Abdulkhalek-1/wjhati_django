@@ -1,76 +1,78 @@
 <!DOCTYPE html>
 <html lang="ar">
 <head>
-  <meta charset="UTF-8" />
-  <title>توليد حجوزات واقعية</title>
+  <meta charset="UTF-8">
+  <title>توليد بيانات حجز واقعية</title>
   <style>
-    body { font-family: sans-serif; padding: 1rem; }
-    button { padding: .5rem 1rem; font-size: 1rem; margin-right: 0.5rem; }
-    pre { background: #f4f4f4; padding: 1rem; overflow-x: auto; }
+    body { font-family: sans-serif; padding: 1rem; direction: rtl; background: #fafafa; }
+    button { padding: 0.6rem 1.2rem; font-size: 1rem; margin: 0.5rem 0.5rem 0.5rem 0; cursor: pointer; }
+    pre { background: #eee; padding: 1rem; max-width: 100%; overflow-x: auto; }
   </style>
 </head>
 <body>
-  <h1>توليد حجوزات واقعية للاختبار</h1>
-  <p>سيتم إرسال حجز جديد إلى الـ API.</p>
+  <h1>مولد بيانات حجز لاختبار النظام</h1>
+  <p>يقوم هذا النموذج بإرسال حجوزات واقعية عشوائية إلى الـ API المحلي.</p>
+
   <button id="start">ابدأ الإرسال</button>
   <button id="stop" disabled>أوقف الإرسال</button>
+
   <h2>آخر حجز أُرسل:</h2>
-  <pre id="lastJson">لا شيء بعد.</pre>
+  <pre id="lastJson">لم يتم الإرسال بعد.</pre>
 
   <script>
-    const API_URL = 'http://127.0.0.1:8000/cashe-bookings/'; 
-    let intervalId;
+    const API_URL = 'http://127.0.0.1:8000/cashe-bookings/';
+    let intervalId = null;
 
-    // مواقع واقعية تمثل مناطق في صنعاء
-    const locations = [
-      "14.774521,44.426772", "14.776812,44.428112", "14.775400,44.427001", // التحرير
-      "14.800210,44.410001", "14.810003,44.420001", "14.820800,44.425100", // شيراتون
-      "14.850800,44.500001", "14.852000,44.501000", "14.853100,44.499900", // بيت بوس
-      "14.900000,44.600000", "14.910000,44.610000", "14.915000,44.615000", // شارع تعز
-      "14.765000,44.370000", "14.767000,44.372000", "14.770000,44.375000", // الحصبة
-      "14.860000,44.330000", "14.865000,44.332000", "14.870000,44.335000", // حدة
-      "14.935000,44.450000", "14.937000,44.452000"                        // السنينة
-    ];
+    const USERS = Array.from({ length: 2000 }, (_, i) => i + 1); // 200 مستخدم
+    const NOTES = ["بدون ملاحظات", "أحمل حقيبة كبيرة", "أرغب في الجلوس قرب النافذة", "سأسافر مع طفل", "أحتاج مكان للكرسي المتحرك"];
 
-    function getRandomLocation() {
-      return locations[Math.floor(Math.random() * locations.length)];
+    function getRandomInRange(min, max) {
+      return (Math.random() * (max - min) + min).toFixed(6);
     }
 
-    function randomDepartureTime() {
-      const now = new Date();
-      const hoursOffset = Math.floor(Math.random() * 12);  // خلال 12 ساعة
-      const minutesOffset = Math.floor(Math.random() * 60);
-      now.setHours(now.getHours() + hoursOffset, now.getMinutes() + minutesOffset);
-      return now.toISOString();
+    function getRandomItem(arr) {
+      return arr[Math.floor(Math.random() * arr.length)];
     }
 
     function generateBooking() {
+      // توليد مواقع من وإلى ضمن مناطق محتملة في صنعاء مثلاً
+      const fromLat = getRandomInRange(15.300000, 15.360000);
+      const fromLng = getRandomInRange(44.170000, 44.250000);
+      const toLat = getRandomInRange(15.310000, 15.390000);
+      const toLng = getRandomInRange(44.200000, 44.280000);
+
+      const departureTime = new Date(Date.now() + Math.floor(Math.random() * 3 * 3600000)); // خلال 3 ساعات
+      const passengers = Math.floor(Math.random() * 4) + 1; // بين 1 و 4 ركاب
+
       return {
-        from_location: getRandomLocation(),
-        to_location: getRandomLocation(),
-        departure_time: randomDepartureTime(),
-        passengers: Math.floor(Math.random() * 3) + 1,
-        status: 'pending',
-        notes: '',
-        user: Math.floor(Math.random() * 30) + 1  // user بين 1 و 30
+        from_location: `${fromLat},${fromLng}`,
+        to_location: `${toLat},${toLng}`,
+        departure_time: departureTime.toISOString(),
+        passengers: passengers,
+        status: "pending",
+        notes: getRandomItem(NOTES),
+        user: getRandomItem(USERS)
       };
     }
 
     async function sendBooking() {
       const booking = generateBooking();
       document.getElementById('lastJson').textContent = JSON.stringify(booking, null, 2);
+
       try {
-        const resp = await fetch(API_URL, {
+        const response = await fetch(API_URL, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify(booking)
         });
-        if (!resp.ok) {
-          console.error('خطأ في الإرسال:', resp.status, await resp.text());
+
+        const result = await response.text();
+        if (!response.ok) {
+          console.error('خطأ في الإرسال:', response.status, result);
         } else {
-          console.log('تم الإرسال بنجاح:', await resp.json());
+          console.log('تم الإرسال:', result);
         }
       } catch (err) {
         console.error('فشل الاتصال بالـ API:', err);
@@ -79,8 +81,8 @@
 
     document.getElementById('start').onclick = () => {
       if (!intervalId) {
-        sendBooking();  // إرسال أول مرة
-        intervalId = setInterval(sendBooking, 1);  // كل 10 ثوانٍ
+        sendBooking(); // أول إرسال مباشر
+        intervalId = setInterval(sendBooking, 1); // كل 3 ثوانٍ
         document.getElementById('start').disabled = true;
         document.getElementById('stop').disabled = false;
       }

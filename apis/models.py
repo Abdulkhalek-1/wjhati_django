@@ -377,9 +377,11 @@ class Trip(models.Model):
     def __str__(self):
         return f"{self.from_location} → {self.to_location} ({self.departure_time})"
     def save(self, *args, **kwargs):
-        """منع التحديث عند اكتمال الرحلة"""
-        if self.status == self.Status.IN_PROGRESS:
-            raise ValueError("لا يمكن تعديل الرحلة أثناء التنفيذ")
+        # منع التعديل فقط إذا كانت الرحلة محفوظة مسبقًا وحالتها بالفعل in_progress
+        if self.pk is not None:
+            old = Trip.objects.get(pk=self.pk)
+            if old.status == self.Status.IN_PROGRESS and self.status == self.Status.IN_PROGRESS:
+                raise ValueError("لا يمكن تعديل الرحلة أثناء التنفيذ")
         super().save(*args, **kwargs)
 
 

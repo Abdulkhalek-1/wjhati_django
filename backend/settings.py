@@ -65,7 +65,7 @@ FCM_API_KEY = "BFeDv5_dTasb2wGuhKHi7zFxMT3AS--63PW7H1fc23613NRGA9r5PQ3LhB0GhtpcQ
 DATABASES = {
     'default': {
         'ENGINE': 'django.contrib.gis.db.backends.postgis',
-        'NAME': 'man',
+        'NAME': 'bnd',
         'USER': 'postgres',
         'PASSWORD': 'nahari',
         'HOST': 'localhost',

@@ -53,10 +53,7 @@ class VehicleViewSet(viewsets.ModelViewSet):
 
 class DriverViewSet(viewsets.ModelViewSet):
     serializer_class = DriverSerializer
-    permission_classes = [IsAuthenticated]
-    def get_queryset(self):
-        user = self.request.user
-        return Driver.objects.filter(user=user)
+    queryset = Driver.objects.all()
 
 class TripViewSet(viewsets.ModelViewSet):
     serializer_class = TripSerializer

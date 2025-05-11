@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <title>توليد بيانات السائقين عشوائية</title>
   <style>
-    body { font-family: sans-serif; padding: 1rem; }
-    button { padding: .5rem 1rem; font-size: 1rem; margin-right: .5rem; }
+    body { font-family: sans-serif; padding: 1rem; direction: rtl; }
+    button { padding: .5rem 1rem; font-size: 1rem; margin-left: .5rem; }
     pre { background: #f4f4f4; padding: 1rem; overflow-x: auto; }
   </style>
 </head>
@@ -19,78 +19,69 @@
   <pre id="lastJson">لا شيء بعد.</pre>
 
   <script>
-    const API_URL = 'http://localhost:8000/drivers/';
+    const API_URL = 'http://localhost:8000/clients/';
+
     let intervalId = null;
     let nextUserId = 2;
-    let nextVehicleId = 3;
 
-    function randomLicense() {
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    function randomDeviceId() {
+      const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
       let s = '';
-      for (let i = 0; i < 12; i++) {
+      for (let i = 0; i < 6; i++) {
         s += chars.charAt(Math.floor(Math.random() * chars.length));
       }
       return s;
     }
 
-    function randomRating() {
-      return parseFloat((Math.random() * 4 + 1).toFixed(1));
-    }
-
-    function randomTrips() {
-      return Math.floor(Math.random() * 101);
-    }
-
-    function randomLocation() {
-      const lat = (12 + Math.random() * 8).toFixed(6);   // تقريباً اليمن ومحيطها
-      const lng = (42 + Math.random() * 4).toFixed(6);
-      return `${lat},${lng}`;
+    function randomCity() {
+      const cities = ['تعز', 'صنعاء', 'عدن', 'الحديدة', 'إب', 'المكلا', 'سيئون'];
+      return cities[Math.floor(Math.random() * cities.length)];
     }
 
     function generateDriver() {
       const driver = {
-        where_location: randomLocation(),
-        license_number: randomLicense(),
-        rating: randomRating(),
-        total_trips: randomTrips(),
-        is_available: Math.random() < 0.7,
-        user: nextUserId,
-        vehicles: [ nextVehicleId+1600 ]
+        id: nextUserId,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        device_id: randomDeviceId(),
+        status: Math.random() < 0.8,
+        status_del: Math.random() < 0.9,
+        city: randomCity(),
+        user: nextUserId
       };
 
       nextUserId++;
-      nextVehicleId++;
 
       return driver;
     }
 
     async function sendDriver() {
-      const drv = generateDriver();
-      document.getElementById('lastJson').textContent = JSON.stringify(drv, null, 2);
+      const driver = generateDriver();
+      document.getElementById('lastJson').textContent = JSON.stringify(driver, null, 2);
 
       try {
-        const resp = await fetch(API_URL, {
+        const response = await fetch(API_URL, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify(drv)
+          body: JSON.stringify(driver)
         });
 
-        if (!resp.ok) {
-          console.error('خطأ في إرسال السائق:', resp.status, await resp.text());
+        if (!response.ok) {
+          console.error('خطأ في إرسال السائق:', response.status, await response.text());
         } else {
-          console.log('تم إرسال السائق بنجاح:', await resp.json());
+          console.log('تم إرسال السائق بنجاح:', await response.json());
         }
-      } catch (err) {
-        console.error('فشل الاتصال بـ API:', err);
+      } catch (error) {
+        console.error('فشل الاتصال بـ API:', error);
       }
     }
 
     document.getElementById('start').onclick = () => {
       if (!intervalId) {
         sendDriver();
-        intervalId = setInterval(sendDriver, 1);  // كل 10 ثواني
+        intervalId = setInterval(sendDriver, 0); // كل 10 ثوانٍ
         document.getElementById('start').disabled = true;
         document.getElementById('stop').disabled = false;
       }
