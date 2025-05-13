@@ -4,9 +4,12 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.auth.models import User
+
+from apis.tasks import send_fcm_notification
 from .models import Chat, Transaction, Transfer, Bonus, Wallet, CasheBooking, Trip
-from .models import Notification
-from .utils import send_notification_to_user
+from .models import Notification, FCMToken
+import requests
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
@@ -92,27 +95,25 @@ class WalletSignals:
             raise
 
 
+#     هذي الاشار مخصصة لتغيير حالة المستخدم بحيث اذا تم اضافته الى رحلة يتم تغيير حالة
+
+@receiver(post_save, sender=Trip)
+def mark_driver_unavailable(sender, instance, created, **kwargs):
+    if created and instance.driver and instance.status != 'completed':
+        instance.driver.is_available = False
+        instance.driver.save(update_fields=['is_available'])
 
 
 @receiver(post_save, sender=Notification)
-def send_fcm_notification(sender, instance, created, **kwargs):
+def on_notification_created(sender, instance, created, **kwargs):
     if created:
-        try:
-            # إعداد بيانات إضافية للإشعار
-            data = {
-                'notification_id': instance.id,
-                'type': instance.notification_type,
-                'related_object_id': instance.related_object_id or '',
+        # ترسل الإشعار مباشرة بعد إنشاء السجل
+        send_fcm_notification(
+            user=instance.user,
+            title=instance.title,
+            message=instance.message,
+            data={
+                "notification_type": getattr(instance, "notification_type", ""),
+                "related_object_id": getattr(instance, "related_object_id", "")
             }
-            
-            send_notification_to_user(
-                user=instance.user,
-                title=instance.title,
-                message=instance.message,
-                data=data
-            )
-            
-            logger.info(f"Notification {instance.id} sent to user {instance.user.id}")
-            
-        except Exception as e:
-            logger.error(f"Failed to send notification {instance.id}: {str(e)}", exc_info=True)
+        )

@@ -131,46 +131,27 @@ class CasheBookingViewSet(viewsets.ModelViewSet):
 class CasheItemDeliveryViewSet(viewsets.ModelViewSet):
     queryset = CasheItemDelivery.objects.all()
     serializer_class = CasheItemDeliverySerializer
-
-
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from .models import FCMToken
 
 class SaveFCMTokenView(APIView):
     permission_classes = [IsAuthenticated]
-    
+
     def post(self, request):
-        token = request.data.get('token')
-        
+        token = request.data.get('fcm_token')
+        device_info = request.data.get('device_info', {})
+
         if not token:
-            logger.warning('Attempt to save FCM token without providing token')
-            return Response(
-                {'error': 'Token is required.', 'code': 'missing_token'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-            
-        if not isinstance(token, str) or len(token) < 10:
-            logger.warning(f'Invalid token format: {token}')
-            return Response(
-                {'error': 'Invalid token format.', 'code': 'invalid_token'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-            
-        try:
-            obj, created = FCMToken.objects.update_or_create(
-                token=token,
-                defaults={'user': request.user}
-            )
-            
-            logger.info(f'FCM token {"created" if created else "updated"} for user {request.user.id}')
-            
-            return Response({
-                'message': 'Token saved successfully.',
-                'created': created,
-                'token_id': obj.id
-            }, status=status.HTTP_200_OK)
-            
-        except Exception as e:
-            logger.error(f'Error saving FCM token: {str(e)}', exc_info=True)
-            return Response(
-                {'error': 'Failed to save token.', 'code': 'server_error'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({"error": "FCM token is required"}, status=400)
+
+        # هنا نحفظ أو نحدّث التوكن للمستخدم
+        FCMToken.objects.update_or_create(
+            token=token,
+            defaults={
+                'user': request.user,
+                'device_info': device_info
+            }
+        )
+        return Response({"message": "FCM token saved successfully"}, status=200)

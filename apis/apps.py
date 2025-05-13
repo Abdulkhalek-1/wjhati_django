@@ -13,9 +13,9 @@ class ApisConfig(AppConfig):
         # تحميل الإشارات
         try:
             import apis.signals
-            logger.info("Notification signals loaded successfully")
+            logger.info("✅ Notification signals loaded successfully")
         except Exception as e:
-            logger.error(f"Failed to load signals: {str(e)}", exc_info=True)
+            logger.error(f"❌ Failed to load signals: {str(e)}", exc_info=True)
 
         # منع التكرار في حالة إعادة تحميل التطبيق
         if hasattr(self, 'hybrid_scheduler_started'):
@@ -25,9 +25,10 @@ class ApisConfig(AppConfig):
         # بدء تشغيل الأمر في خيط منفصل
         def start_hybrid_scheduler():
             try:
+                logger.info("📦 Starting hybrid trip scheduler command...")
                 call_command('dbscan_clustering', '--eps', '0.1', '--min_samples', '3')
             except Exception as e:
-                logger.error(f"Error starting hybrid scheduler: {e}", exc_info=True)
+                logger.error(f"❌ Error starting hybrid scheduler: {e}", exc_info=True)
 
         threading.Thread(target=start_hybrid_scheduler, daemon=True).start()
-        logger.info("Hybrid scheduler thread started.")
+        logger.info("✅ Hybrid scheduler thread started.")
