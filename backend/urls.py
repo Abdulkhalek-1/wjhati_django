@@ -11,7 +11,6 @@ urlpatterns = [
     path("api/token/", TokenObtainPairView.as_view(), name="get_token"),
     path("api/token/refresh/", TokenRefreshView.as_view(), name="refresh"),
     path('api/save-fcm-token/', SaveFCMTokenView.as_view(), name='save-fcm-token'),
-        path('client/trips/', ClientTripsView.as_view(), name='client-trips'),
     path("api-auth/", include("rest_framework.urls")),
     path('api/register/', RegisterView.as_view(), name='register'),
     path("",include('apis.urls')),

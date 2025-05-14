@@ -6,7 +6,7 @@ from .views import WalletViewSet,TransactionViewSet
 router = DefaultRouter()
 router.register(r'wallets', WalletViewSet, basename='wallet')
 router.register(r'user', UserViewSet)
-router.register(r'clients', ClientViewSet)
+router.register(r'clients', ClientViewSet, basename='client')
 router.register(r'transactions', TransactionViewSet, basename='Transaction')
 router.register(r'vehicles', VehicleViewSet)
 router.register(r'drivers', DriverViewSet,basename='Driver')

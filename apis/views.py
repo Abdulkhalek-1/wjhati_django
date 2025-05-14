@@ -1,19 +1,15 @@
-from rest_framework import viewsets
 from .models import *
 from .serializers import *
 from rest_framework import generics
 from rest_framework import viewsets, status
 from rest_framework.response import Response
-from .models import Wallet
-from .serializers import WalletSerializer
 from rest_framework.permissions import IsAuthenticated
-from .models import Trip
 from rest_framework.views import APIView
-from .models import FCMToken
 from django.db.models import Q
-from .models import Booking
-from .serializers import BookingSerializer
+from django.core.exceptions import ValidationError
 import logging
+
+
 
 logger = logging.getLogger(__name__)
 
@@ -25,24 +21,16 @@ class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
 
-class ClientTripsView(APIView):
+
+class ClientViewSet(viewsets.ModelViewSet):
+    serializer_class = ClientSerializer
     permission_classes = [IsAuthenticated]
 
-    def get(self, request):
-        user = request.user
-        client = getattr(user, 'client', None)
-
-        if not client:
-            return Response({'error': 'هذا المستخدم ليس عميلًا'}, status=400)
-
-        # الحصول على جميع الرحلات التي حجزها العميل
-        trips = Trip.objects.filter(bookings__client=client).distinct()
-        serializer = TripSerializer(trips, many=True)
-        return Response(serializer.data)
-    
-class ClientViewSet(viewsets.ModelViewSet):
-    queryset = Client.objects.all()
-    serializer_class = ClientSerializer
+    def get_queryset(self):
+        user = self.request.user
+        if hasattr(user, 'client'):
+            return Client.objects.filter(id=user.client.id)
+        return Client.objects.none()
 
 
 class WalletViewSet(viewsets.ModelViewSet):
@@ -72,16 +60,6 @@ class VehicleViewSet(viewsets.ModelViewSet):
 class DriverViewSet(viewsets.ModelViewSet):
     serializer_class = DriverSerializer
     queryset = Driver.objects.all()
-from rest_framework import viewsets, status
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from django.core.exceptions import ValidationError
-import logging
-
-from .models import Trip, Booking
-from .serializers import TripSerializer
-
-logger = logging.getLogger(__name__)
 
 class TripViewSet(viewsets.ModelViewSet):
     serializer_class = TripSerializer
@@ -164,6 +142,7 @@ class BookingViewSet(viewsets.ModelViewSet):
         
         # إذا كان مديراً أو لا ينتمي لأي نوع معين
         return queryset
+
 class RatingViewSet(viewsets.ModelViewSet):
     queryset = Rating.objects.all()
     serializer_class = RatingSerializer
