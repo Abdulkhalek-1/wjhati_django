@@ -1,12 +1,12 @@
 import logging
 from django.db import transaction
-from django.db.models.signals import post_save
+from django.db.models.signals import post_save,post_delete
 from django.dispatch import receiver
 from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.auth.models import User
 
 from apis.tasks import send_fcm_notification
-from .models import Chat, Transaction, Transfer, Bonus, Wallet, CasheBooking, Trip
+from .models import Booking, Chat, Transaction, Transfer, Bonus, Wallet, CasheBooking, Trip
 from .models import Notification, FCMToken
 import requests
 from django.conf import settings
@@ -117,3 +117,7 @@ def on_notification_created(sender, instance, created, **kwargs):
                 "related_object_id": getattr(instance, "related_object_id", "")
             }
         )
+
+@receiver([post_save, post_delete], sender=Booking)
+def update_trip_availability(sender, instance, **kwargs):
+    instance.trip.update_availability()

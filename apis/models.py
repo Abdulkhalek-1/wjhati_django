@@ -3,6 +3,8 @@ from django.utils.translation import gettext_lazy as _
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator, MaxValueValidator, RegexValidator
 import uuid
+
+from jsonschema import ValidationError
 # ============================
 # نموذج أساسي للوقت
 # ============================
@@ -304,11 +306,12 @@ class Driver(BaseModel):
 class Trip(models.Model):
     """
     يمثل الرحلة مع تفاصيل مثل نقطة الانطلاق، وجهة الوصول، السائق، وغيرها.
-    """
+    """  
     class Status(models.TextChoices):
         PENDING = 'pending', _('قيد الانتظار')
         IN_PROGRESS = 'in_progress', _('قيد التنفيذ')
-        COMPLETED = 'completed', _('مكتملة')
+        FULL = 'full', _('مكتملة')
+        COMPLETED = 'completed', _('منتهية')
         CANCELLED = 'cancelled', _('ملغية')
     status = models.CharField(
         max_length=20,
@@ -360,30 +363,47 @@ class Trip(models.Model):
             models.Index(fields=['status']),
         ]
         ordering = ['-departure_time']
-    def update_availability(self):
-        """تحديث المقاعد المتاحة وحالة الرحلة"""
-        total_booked = self.bookings.aggregate(
-            total=models.Sum('passengers')
-        )['total'] or 0
+def update_availability(self):
+    """تحديث المقاعد المتاحة وحالة الرحلة"""
+    total_booked = self.bookings.aggregate(
+        total=models.Sum('seats')  # تغيير من 'passengers' إلى 'seats'
+    )['total'] or 0
+    
+    self.available_seats = self.vehicle.capacity - total_booked
+    
+    if self.available_seats <= 0 and self.status != self.Status.FULL:
+        self.status = self.Status.FULL
+    elif self.available_seats > 0 and self.status == self.Status.FULL:
+        self.status = self.Status.PENDING
         
-        self.available_seats = self.vehicle.capacity - total_booked
+    self.save(update_fields=['available_seats', 'status'])
+    def clean(self):
+        """التحقق من صحة البيانات قبل الحفظ"""
+        if hasattr(self, 'vehicle') and self.available_seats > self.vehicle.capacity:
+            raise ValidationError({
+                'available_seats': 'لا يمكن أن تكون المقاعد المتاحة أكثر من سعة المركبة'
+            })
         
-        if self.available_seats <= 0 and self.status != self.Status.FULL:
-            self.status = self.Status.FULL
-        elif self.available_seats > 0 and self.status == self.Status.FULL:
-            self.status = self.Status.PENDING
-            
-        self.save()
-    def __str__(self):
-        return f"{self.from_location} → {self.to_location} ({self.departure_time})"
-    def save(self, *args, **kwargs):
-        # منع التعديل فقط إذا كانت الرحلة محفوظة مسبقًا وحالتها بالفعل in_progress
-        if self.pk is not None:
-            old = Trip.objects.get(pk=self.pk)
-            if old.status == self.Status.IN_PROGRESS and self.status == self.Status.IN_PROGRESS:
-                raise ValueError("لا يمكن تعديل الرحلة أثناء التنفيذ")
-        super().save(*args, **kwargs)
+        if self.price_per_seat <= 0:
+            raise ValidationError({
+                'price_per_seat': 'يجب أن يكون السعر قيمة موجبة'
+            })
 
+    def save(self, *args, **kwargs):
+        """تجاوز دالة الحفظ لتطبيق القيود"""
+        self.clean()
+        
+        # إذا كانت الرحلة قيد التنفيذ، نمنع بعض التعديلات
+        if self.pk and self.status == self.Status.IN_PROGRESS:
+            original = Trip.objects.get(pk=self.pk)
+            forbidden_fields = ['from_location', 'to_location', 'departure_time', 'vehicle']
+            for field in forbidden_fields:
+                if getattr(self, field) != getattr(original, field):
+                    raise ValidationError(
+                        f'لا يمكن تعديل {self._meta.get_field(field).verbose_name} أثناء تنفيذ الرحلة'
+                    )
+        
+        super().save(*args, **kwargs)
 
 # ============================
 # نموذج الحجز للرحلات
