@@ -2,6 +2,7 @@ from pathlib import Path
 from datetime import timedelta
 from dotenv import load_dotenv
 import os
+import dj_database_url
 
 load_dotenv()
 
@@ -58,22 +59,11 @@ TEMPLATES = [
 import os
 
 DATABASES = {
-    'default': {
-        # استخدم محرك PostgreSQL العادي
-        'ENGINE': 'django.db.backends.postgresql',
-        # البيانات تأتي من متغيرات البيئة، مع قيم افتراضية للعرض فقط
-        'NAME': os.environ.get('DB_NAME', 'wejhatidb'),
-        'USER': os.environ.get('DB_USER', 'nahari'),
-        'PASSWORD': os.environ.get('DB_PASSWORD', '••••••••••••••••••••••••••'),
-        'HOST': os.environ.get('DB_HOST', 'dpg-d0j4u8ili9vc73bam73g-a'),
-        'PORT': os.environ.get('DB_PORT', '5432'),
-
-        # تحسينات الأداء
-        'CONN_MAX_AGE': 300,           # إبقاء الاتصال مفتوحًا لمدة 300 ثانية
-        'OPTIONS': {
-            'connect_timeout': 30,     # مهلة الاتصال 30 ثانية
-        },
-    }
+    'default': dj_database_url.config(
+        default=os.environ.get('postgresql://nahari:qoUxNN8qdrT9u0rocHZRPdmHvRBfwRsv@dpg-d0j5dkjuibrs73cmjrj0-a.oregon-postgres.render.com/wejhati'),
+        conn_max_age=300,        # إبقاء الاتصال مفتوح ٥ دقائق
+        ssl_require=True         # أو حسب حاجتك
+    )
 }
 
 
