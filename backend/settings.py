@@ -3,7 +3,6 @@ from datetime import timedelta
 from dotenv import load_dotenv
 import os
 import dj_database_url
-
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -57,13 +56,8 @@ TEMPLATES = [
 ]
 
 import os
-
 DATABASES = {
-    'default': dj_database_url.config(
-        default=os.environ.get('postgresql://nahari:qoUxNN8qdrT9u0rocHZRPdmHvRBfwRsv@dpg-d0j5dkjuibrs73cmjrj0-a.oregon-postgres.render.com/wejhati'),
-        conn_max_age=300,        # إبقاء الاتصال مفتوح ٥ دقائق
-        ssl_require=True         # أو حسب حاجتك
-    )
+    "default": dj_database_url.parse(os.environ.get("DATABASE_URL"))
 }
 
 
