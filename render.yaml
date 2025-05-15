@@ -11,3 +11,7 @@ services:
         value: backend.settings
       - key: PYTHON_VERSION
         value: 3.11
+deploy:
+      postDeploy:
+        - python manage.py migrate --noinput
+        - python manage.py collectstatic --noinput

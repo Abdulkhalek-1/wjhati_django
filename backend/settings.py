@@ -55,20 +55,27 @@ TEMPLATES = [
     },
 ]
 
+import os
+
 DATABASES = {
     'default': {
-        'ENGINE': 'django.contrib.gis.db.backends.postgis',
-        'NAME': 'dpg-d0j4u8ili9vc73bam73g-a',
-        'USER': 'postgres',
-        'PASSWORD': 'nahari',
-        'HOST': 'DB_HOST',
-        'PORT': '5432',
-        'CONN_MAX_AGE': 300,  # زيادة عمر الاتصال
+        # استخدم محرك PostgreSQL العادي
+        'ENGINE': 'django.db.backends.postgresql',
+        # البيانات تأتي من متغيرات البيئة، مع قيم افتراضية للعرض فقط
+        'NAME': os.environ.get('DB_NAME', 'wejhatidb'),
+        'USER': os.environ.get('DB_USER', 'nahari'),
+        'PASSWORD': os.environ.get('DB_PASSWORD', '••••••••••••••••••••••••••'),
+        'HOST': os.environ.get('DB_HOST', 'dpg-d0j4u8ili9vc73bam73g-a'),
+        'PORT': os.environ.get('DB_PORT', '5432'),
+
+        # تحسينات الأداء
+        'CONN_MAX_AGE': 300,           # إبقاء الاتصال مفتوحًا لمدة 300 ثانية
         'OPTIONS': {
-            'connect_timeout': 30,  # زيادة مهلة الاتصال
-        }
+            'connect_timeout': 30,     # مهلة الاتصال 30 ثانية
+        },
     }
 }
+
 
 AUTH_USER_MODEL = 'auth.User' 
 AUTH_PASSWORD_VALIDATORS = [
