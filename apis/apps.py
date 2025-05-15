@@ -1,6 +1,8 @@
+import os
 import threading
 import logging
 from django.apps import AppConfig
+from django.conf import settings
 from django.core.management import call_command
 
 logger = logging.getLogger(__name__)
@@ -9,8 +11,10 @@ class ApisConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apis'
 
-    def ready(self):
-        # تحميل الإشارات
+def ready(self):
+    if settings.DEBUG or os.environ.get('RUN_SCHEDULER')=='true':
+        from .tasks import start_hybrid_scheduler
+        start_hybrid_scheduler()    
         try:
             import apis.signals
             logger.info("✅ Notification signals loaded successfully")

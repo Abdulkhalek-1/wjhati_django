@@ -61,7 +61,7 @@ DATABASES = {
         'NAME': 'wj',
         'USER': 'postgres',
         'PASSWORD': 'nahari',
-        'HOST': 'localhost',
+        'HOST': 'DB_HOST',
         'PORT': '5432',
         'CONN_MAX_AGE': 300,  # زيادة عمر الاتصال
         'OPTIONS': {
