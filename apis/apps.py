@@ -12,9 +12,9 @@ class ApisConfig(AppConfig):
     name = 'apis'
 
 def ready(self):
-    if settings.DEBUG or os.environ.get('RUN_SCHEDULER')=='true':
-        from .tasks import start_hybrid_scheduler
-        start_hybrid_scheduler()    
+   # if settings.DEBUG or os.environ.get('RUN_SCHEDULER')=='true':
+    #    from .tasks import start_hybrid_scheduler
+     #   start_hybrid_scheduler()    
         try:
             import apis.signals
             logger.info("✅ Notification signals loaded successfully")
