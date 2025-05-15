@@ -4,7 +4,7 @@ from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator, MaxValueValidator, RegexValidator
 import uuid
 
-from jsonschema import ValidationError
+from django.core.exceptions import ValidationError
 # ============================
 # نموذج أساسي للوقت
 # ============================
