@@ -109,3 +109,4 @@ class CasheItemDeliverySerializer(serializers.ModelSerializer):
     class Meta:
         model = CasheItemDelivery
         fields = '__all__'
+

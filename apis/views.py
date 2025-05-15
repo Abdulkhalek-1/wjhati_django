@@ -114,7 +114,6 @@ class BookingViewSet(viewsets.ModelViewSet):
     """
     serializer_class = BookingSerializer
     permission_classes = [IsAuthenticated]
-    queryset = Booking.objects.all()
 
     def get_queryset(self):
         """
