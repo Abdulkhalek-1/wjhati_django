@@ -1,17 +1,44 @@
+# render.yaml
 services:
   - type: web
     name: wjhati-django-app
     env: python
+    region: oregon                  # عدّل المنطقة حسب حاجتك
+    branch: main                    # فرع GitHub الذي يحتوي الكود
+    rootDir: backend                # إذا مشروعك في مجلد backend. احذف هذا السطر إن كان في الجذر
     buildCommand: "pip install -r requirements.txt"
     startCommand: "gunicorn backend.wsgi:application"
     envVars:
+      # أساسيات Django
       - key: DJANGO_SECRET_KEY
         value: your-secret-key
       - key: DJANGO_SETTINGS_MODULE
         value: backend.settings
       - key: PYTHON_VERSION
         value: 3.11
-deploy:
+
+      # بيانات الاتصال بقاعدة البيانات (Postgres on Render)
+      - key: DB_NAME
+        value: wejhatidb
+      - key: DB_USER
+        value: nahari
+      - key: DB_PASSWORD
+        value: "{{ yoqoUxNN8qdrT9u0rocHZRPdmHvRBfwRsvur }}"    # الصق كلمة المرور الحقيقية هنا
+      - key: DB_HOST
+        value: dpg-d0j5dkjuibrs73cmjrj0-a
+      - key: DB_PORT
+        value: "5432"
+
+      # السوبر يوزر — إنشاء تلقائي
+      - key: DJANGO_SUPERUSER_USERNAME
+        value: admin
+      - key: DJANGO_SUPERUSER_EMAIL
+        value: admin@example.com
+      - key: DJANGO_SUPERUSER_PASSWORD
+        value: StrongP@ssw0rd
+
+    deploy:
       postDeploy:
         - python manage.py migrate --noinput
         - python manage.py collectstatic --noinput
+        - python manage.py createsuperuser --noinput
