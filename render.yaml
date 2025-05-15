@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: wjhati-django-app
+    env: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn wjhati_django.wsgi:application"
+    envVars:
+      - key: DJANGO_SECRET_KEY
+        value: your-secret-key
+      - key: DJANGO_SETTINGS_MODULE
+        value: wjhati_django.settings
+      - key: PYTHON_VERSION
+        value: 3.11
