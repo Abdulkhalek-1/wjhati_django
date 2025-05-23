@@ -2,57 +2,65 @@
 <html lang="ar">
 <head>
   <meta charset="UTF-8">
-  <title>توليد بيانات حجز واقعية</title>
+  <title>مولد بيانات الحجوزات</title>
   <style>
-    body { font-family: sans-serif; padding: 1rem; direction: rtl; background: #fafafa; }
-    button { padding: 0.6rem 1.2rem; font-size: 1rem; margin: 0.5rem 0.5rem 0.5rem 0; cursor: pointer; }
-    pre { background: #eee; padding: 1rem; max-width: 100%; overflow-x: auto; }
+    body { font-family: sans-serif; padding: 1rem; direction: rtl; background: #f4f4f4; }
+    button { padding: 0.6rem 1.2rem; font-size: 1rem; margin: 0.5rem; cursor: pointer; }
+    pre { background: #fff; padding: 1rem; max-width: 100%; overflow-x: auto; border: 1px solid #ccc; }
   </style>
 </head>
 <body>
-  <h1>مولد بيانات حجز لاختبار النظام</h1>
-  <p>يقوم هذا النموذج بإرسال حجوزات واقعية عشوائية إلى الـ API المحلي.</p>
+  <h1>📦 مولد بيانات الحجز لاختبار الرحلات</h1>
+  <p>يقوم هذا النموذج بتوليد حجوزات عشوائية دقيقة ضمن نطاق جغرافي محدد.</p>
 
-  <button id="start">ابدأ الإرسال</button>
-  <button id="stop" disabled>أوقف الإرسال</button>
+  <button id="start">🚀 ابدأ الإرسال</button>
+  <button id="stop" disabled>🛑 أوقف الإرسال</button>
 
-  <h2>آخر حجز أُرسل:</h2>
+  <h2>📄 آخر حجز:</h2>
   <pre id="lastJson">لم يتم الإرسال بعد.</pre>
 
   <script>
     const API_URL = 'http://127.0.0.1:8000/cashe-bookings/';
     let intervalId = null;
 
-    const USERS = Array.from({ length: 2000 }, (_, i) => i + 1); // 200 مستخدم
-    const NOTES = ["بدون ملاحظات", "أحمل حقيبة كبيرة", "أرغب في الجلوس قرب النافذة", "سأسافر مع طفل", "أحتاج مكان للكرسي المتحرك"];
+    const USERS = Array.from({ length: 20 }, (_, i) => i + 1);
+    const NOTES = ["بدون ملاحظات", "أحمل حقيبة", "مع طفل", "أحتاج مكان إضافي", "لا أرغب في الجلوس قرب الباب"];
 
     function getRandomInRange(min, max) {
-      return (Math.random() * (max - min) + min).toFixed(6);
+      return +(Math.random() * (max - min) + min).toFixed(6);
     }
 
     function getRandomItem(arr) {
       return arr[Math.floor(Math.random() * arr.length)];
     }
 
-    function generateBooking() {
-      // توليد مواقع من وإلى ضمن مناطق محتملة في صنعاء مثلاً
-      const fromLat = getRandomInRange(15.300000, 15.360000);
-      const fromLng = getRandomInRange(44.170000, 44.250000);
-      const toLat = getRandomInRange(15.310000, 15.390000);
-      const toLng = getRandomInRange(44.200000, 44.280000);
-
-      const departureTime = new Date(Date.now() + Math.floor(Math.random() * 3 * 3600000)); // خلال 3 ساعات
-      const passengers = Math.floor(Math.random() * 4) + 1; // بين 1 و 4 ركاب
-
+    function generateLocationRange(latMin, latMax, lngMin, lngMax) {
       return {
-        from_location: `${fromLat},${fromLng}`,
-        to_location: `${toLat},${toLng}`,
+        lat: getRandomInRange(latMin, latMax),
+        lng: getRandomInRange(lngMin, lngMax)
+      };
+    }
+
+    function generateBooking() {
+      const from = generateLocationRange(15.300, 15.340, 44.190, 44.230); // منطقة في صنعاء
+      let to;
+      do {
+        to = generateLocationRange(15.310, 15.360, 44.220, 44.260);
+      } while (Math.abs(from.lat - to.lat) < 0.003 && Math.abs(from.lng - to.lng) < 0.003); // تجنب التشابه الكبير
+
+      const departureTime = new Date(Date.now() + (Math.floor(Math.random() * 6) + 1) * 60 * 60000); // من ساعة إلى 6 ساعات
+
+      const booking = {
+        from_location: `${from.lat},${from.lng}`,
+        to_location: `${to.lat},${to.lng}`,
         departure_time: departureTime.toISOString(),
-        passengers: passengers,
+        passengers: Math.floor(Math.random() * 3) + 1,
         status: "pending",
         notes: getRandomItem(NOTES),
         user: getRandomItem(USERS)
       };
+
+      return booking;
     }
 
     async function sendBooking() {
@@ -70,19 +78,19 @@
 
         const result = await response.text();
         if (!response.ok) {
-          console.error('خطأ في الإرسال:', response.status, result);
+          console.error('❌ فشل الإرسال:', response.status, result);
         } else {
-          console.log('تم الإرسال:', result);
+          console.log('✅ تم الإرسال:', result);
         }
       } catch (err) {
-        console.error('فشل الاتصال بالـ API:', err);
+        console.error('⚠️ فشل الاتصال بالـ API:', err);
       }
     }
 
     document.getElementById('start').onclick = () => {
       if (!intervalId) {
-        sendBooking(); // أول إرسال مباشر
-        intervalId = setInterval(sendBooking, 1); // كل 3 ثوانٍ
+        sendBooking(); // أول إرسال
+        intervalId = setInterval(sendBooking, 11); // كل 3 ثوانٍ
         document.getElementById('start').disabled = true;
         document.getElementById('stop').disabled = false;
       }

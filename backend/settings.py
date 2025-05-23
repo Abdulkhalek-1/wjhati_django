@@ -57,7 +57,14 @@ TEMPLATES = [
 
 import os
 DATABASES = {
-    "default": dj_database_url.parse(os.environ.get("DATABASE_URL"))
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": "naa",
+        "USER": "postgres",
+        "PASSWORD": "nahari",
+        "HOST": "localhost",
+        "PORT": "5432",
+    }
 }
 
 

@@ -2,8 +2,8 @@ import os
 import threading
 import logging
 from django.apps import AppConfig
-from django.conf import settings
 from django.core.management import call_command
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
@@ -11,28 +11,28 @@ class ApisConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apis'
 
-def ready(self):
-    if settings.DEBUG or os.environ.get('RUN_SCHEDULER')=='true':
-        from .tasks import start_hybrid_scheduler
-        start_hybrid_scheduler()    
+    def ready(self):
+        self._load_signals()
+        self._start_trip_scheduler()
+
+    def _load_signals(self):
         try:
             import apis.signals
             logger.info("✅ Notification signals loaded successfully")
         except Exception as e:
-            logger.error(f"❌ Failed to load signals: {str(e)}", exc_info=True)
+            logger.error("❌ Failed to load notification signals", exc_info=True)
 
-        # منع التكرار في حالة إعادة تحميل التطبيق
-        if hasattr(self, 'hybrid_scheduler_started'):
+    def _start_trip_scheduler(self):
+        # تأكد من أن الكود لا يعمل أثناء المايجريشن أو في أوامر أخرى غير runserver
+        if os.environ.get('RUN_MAIN') != 'true':
             return
-        self.hybrid_scheduler_started = True
 
-        # بدء تشغيل الأمر في خيط منفصل
-        def start_hybrid_scheduler():
+        def run_scheduler():
             try:
-                logger.info("📦 Starting hybrid trip scheduler command...")
-                call_command('dbscan_clustering', '--eps', '0.1', '--min_samples', '3')
+                logger.info("📦 Starting intelligent trip scheduler using DBSCAN...")
+                call_command('dbscan_clustering', '--min_cluster_size', '3')
             except Exception as e:
-                logger.error(f"❌ Error starting hybrid scheduler: {e}", exc_info=True)
+                logger.error("❌ Failed to start DBSCAN scheduler", exc_info=True)
 
-        threading.Thread(target=start_hybrid_scheduler, daemon=True).start()
-        logger.info("✅ Hybrid scheduler thread started.")
+        threading.Thread(target=run_scheduler, daemon=True).start()
+        logger.info("✅ DBSCAN scheduler thread started.")

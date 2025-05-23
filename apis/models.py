@@ -3,8 +3,11 @@ from django.utils.translation import gettext_lazy as _
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator, MaxValueValidator, RegexValidator
 import uuid
-
+from django.db.models import Sum, F
+from django.db.models.functions import Cast
 from django.core.exceptions import ValidationError
+from django.db.models import IntegerField
+
 # ============================
 # نموذج أساسي للوقت
 # ============================
@@ -303,50 +306,47 @@ class Driver(BaseModel):
 # نموذج الرحلة
 # ============================
 
+
 class Trip(models.Model):
     """
     يمثل الرحلة مع تفاصيل مثل نقطة الانطلاق، وجهة الوصول، السائق، وغيرها.
-    """  
+    """
+
     class Status(models.TextChoices):
         PENDING = 'pending', _('قيد الانتظار')
         IN_PROGRESS = 'in_progress', _('قيد التنفيذ')
         FULL = 'full', _('مكتملة')
         COMPLETED = 'completed', _('منتهية')
         CANCELLED = 'cancelled', _('ملغية')
-    status = models.CharField(
-        max_length=20,
-        choices=Status.choices,
-        default=Status.PENDING
-    )
 
     from_location = models.CharField(max_length=255, verbose_name=_("من"))
     to_location = models.CharField(max_length=255, verbose_name=_("إلى"))
     departure_time = models.DateTimeField(verbose_name=_("وقت المغادرة"))
     estimated_duration = models.DurationField(
-        null=True,
-        blank=True,
-        verbose_name=_("المدة المتوقعة")
+        null=True, blank=True, verbose_name=_("المدة المتوقعة")
+    )
+    distance_km = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True, verbose_name=_("المسافة (كم)")
     )
     available_seats = models.IntegerField(default=0, verbose_name=_("عدد المقاعد المتاحة"))
-    distance_km = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     price_per_seat = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        null=True,
-        blank=True,
-        verbose_name=_("السعر لكل مقعد")
+        max_digits=10, decimal_places=2, null=True, blank=True, verbose_name=_("السعر لكل مقعد")
     )
     status = models.CharField(
-        max_length=20,
-        choices=Status.choices,
-        default=Status.PENDING,
-        verbose_name=_("الحالة")
+        max_length=20, choices=Status.choices, default=Status.PENDING, verbose_name=_("الحالة")
     )
     driver = models.ForeignKey(
-        Driver,
+        'Driver',
         on_delete=models.CASCADE,
         related_name='trips',
         verbose_name=_("السائق")
+    )
+    vehicle = models.ForeignKey(
+        'Vehicle',
+        on_delete=models.CASCADE,
+        related_name='trips',
+        verbose_name=_("المركبة"),
+        null=False
     )
     route_coordinates = models.TextField(
         null=True,
@@ -363,46 +363,55 @@ class Trip(models.Model):
             models.Index(fields=['status']),
         ]
         ordering = ['-departure_time']
-def update_availability(self):
-    """تحديث المقاعد المتاحة وحالة الرحلة"""
-    total_booked = self.bookings.aggregate(
-        total=models.Sum('seats')  # تغيير من 'passengers' إلى 'seats'
-    )['total'] or 0
-    
-    self.available_seats = self.vehicle.capacity - total_booked
-    
-    if self.available_seats <= 0 and self.status != self.Status.FULL:
-        self.status = self.Status.FULL
-    elif self.available_seats > 0 and self.status == self.Status.FULL:
-        self.status = self.Status.PENDING
-        
-    self.save(update_fields=['available_seats', 'status'])
+
+    def update_availability(self):
+        """تحديث عدد المقاعد المتاحة وحالة الرحلة."""
+        total_booked = sum(
+            len(booking.seats) if isinstance(booking.seats, list) else 0
+            for booking in self.bookings.all()
+        )
+        vehicle = self.driver.vehicles.first() if self.driver else None
+        if vehicle:
+            self.available_seats = vehicle.capacity - total_booked
+        else:
+            self.available_seats = 0  # إذا لم يوجد مركبة
+
+        if self.available_seats <= 0 and self.status != self.Status.FULL:
+            self.status = self.Status.FULL
+        elif self.available_seats > 0 and self.status == self.Status.FULL:
+            self.status = self.Status.PENDING
+
+        self.save(update_fields=['available_seats', 'status'])
+
+
     def clean(self):
         """التحقق من صحة البيانات قبل الحفظ"""
-        if hasattr(self, 'vehicle') and self.available_seats > self.vehicle.capacity:
-            raise ValidationError({
-                'available_seats': 'لا يمكن أن تكون المقاعد المتاحة أكثر من سعة المركبة'
-            })
-        
-        if self.price_per_seat <= 0:
+        vehicle = getattr(self.driver, 'vehicle', None)
+
+        if vehicle:
+            if self.available_seats > vehicle.capacity:
+                raise ValidationError({
+                    'available_seats': 'لا يمكن أن تكون المقاعد المتاحة أكثر من سعة المركبة'
+                })
+
+        if self.price_per_seat is not None and self.price_per_seat <= 0:
             raise ValidationError({
                 'price_per_seat': 'يجب أن يكون السعر قيمة موجبة'
             })
 
     def save(self, *args, **kwargs):
-        """تجاوز دالة الحفظ لتطبيق القيود"""
+        """تجاوز دالة الحفظ لتطبيق القيود المنطقية قبل التخزين"""
         self.clean()
-        
-        # إذا كانت الرحلة قيد التنفيذ، نمنع بعض التعديلات
+
         if self.pk and self.status == self.Status.IN_PROGRESS:
             original = Trip.objects.get(pk=self.pk)
             forbidden_fields = ['from_location', 'to_location', 'departure_time', 'vehicle']
             for field in forbidden_fields:
                 if getattr(self, field) != getattr(original, field):
                     raise ValidationError(
-                        f'لا يمكن تعديل {self._meta.get_field(field).verbose_name} أثناء تنفيذ الرحلة'
+                        _(f"لا يمكن تعديل {self._meta.get_field(field).verbose_name} أثناء تنفيذ الرحلة.")
                     )
-        
+
         super().save(*args, **kwargs)
 
 # ============================

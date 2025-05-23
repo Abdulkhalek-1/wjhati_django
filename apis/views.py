@@ -63,50 +63,7 @@ class DriverViewSet(viewsets.ModelViewSet):
 
 class TripViewSet(viewsets.ModelViewSet):
     serializer_class = TripSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        user = self.request.user
-
-        # إذا كان المستخدم سائقًا
-        if hasattr(user, 'driver'):
-            return Trip.objects.filter(driver=user.driver)
-
-        # إذا كان المستخدم عميلًا
-        elif hasattr(user, 'client'):
-            return Trip.objects.filter(booking__client=user.client).distinct()
-
-        # إذا كان المستخدم مديرًا (نفترض أنه ليس له علاقة بـ driver أو client)
-        elif user.is_staff or user.is_superuser:
-            return Trip.objects.all()
-
-        # إذا لم ينطبق عليه أي من الأدوار
-        return Trip.objects.none()
-
-    def update(self, request, *args, **kwargs):
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-
-        try:
-            self.perform_update(serializer)
-
-            # تحديث المقاعد المتاحة بعد أي تعديل
-            instance.refresh_from_db()
-
-            return Response(serializer.data)
-
-        except ValidationError as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        except Exception as e:
-            logger.error(f"Unexpected error updating trip: {str(e)}")
-            return Response(
-                {'error': 'An unexpected error occurred'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+    queryset = Trip.objects.all()
 
 class BookingViewSet(viewsets.ModelViewSet):
     """
