@@ -1,15 +1,15 @@
-from .models import *
-from .serializers import *
-from rest_framework import generics
-from rest_framework import viewsets, status
+from .models import Chat, Message, FCMToken, Wallet, Transaction, Vehicle, Driver, Trip, Booking, Rating, SupportTicket, Notification, Transfer, SubscriptionPlan, Subscription, Bonus, TripStop, ItemDelivery, CasheBooking, CasheItemDelivery
+from .serializers import ChatSerializer, MessageSerializer, UserSerializer, ClientSerializer, WalletSerializer, TransactionSerializer, VehicleSerializer, DriverSerializer, TripSerializer, BookingSerializer, RatingSerializer, SupportTicketSerializer, NotificationSerializer, TransferSerializer, SubscriptionPlanSerializer, SubscriptionSerializer, BonusSerializer, TripStopSerializer, ItemDeliverySerializer, CasheBookingSerializer, CasheItemDeliverySerializer
+from rest_framework import viewsets, permissions, status, generics
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
-from django.db.models import Q
-from django.core.exceptions import ValidationError
+from django.db.models import Q, Count, Prefetch
+from django.contrib.auth import get_user_model
 import logging
 
-
+User = get_user_model()
 
 logger = logging.getLogger(__name__)
 
@@ -25,13 +25,13 @@ class RegisterView(generics.CreateAPIView):
 class ClientViewSet(viewsets.ModelViewSet):
     serializer_class = ClientSerializer
     permission_classes = [IsAuthenticated]
-
+    
     def get_queryset(self):
-        user = self.request.user
-        if hasattr(user, 'client'):
-            return Client.objects.filter(id=user.client.id)
-        return Client.objects.none()
-
+        messages_prefetch = Prefetch(
+            'messages',
+            queryset=Message.objects.order_by('-created_at')
+        )
+        return Chat.objects.prefetch_related(messages_prefetch)
 
 class WalletViewSet(viewsets.ModelViewSet):
     serializer_class = WalletSerializer
@@ -103,16 +103,6 @@ class RatingViewSet(viewsets.ModelViewSet):
     queryset = Rating.objects.all()
     serializer_class = RatingSerializer
 
-class ChatViewSet(viewsets.ModelViewSet):
-    serializer_class = ChatSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        return Chat.objects.filter(participants=self.request.user)
-
-class MessageViewSet(viewsets.ModelViewSet):
-    queryset = Message.objects.all()
-    serializer_class = MessageSerializer
 
 class SupportTicketViewSet(viewsets.ModelViewSet):
     queryset = SupportTicket.objects.all()
@@ -178,3 +168,48 @@ class SaveFCMTokenView(APIView):
             }
         )
         return Response({"message": "FCM token saved successfully"}, status=200)
+
+
+
+class ChatListAPIView(generics.ListAPIView):
+    serializer_class = ChatSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        # ارجع كل المحادثات التي يشارك فيها المستخدم مرتبة حسب آخر تحديث
+        return Chat.objects.filter(participants=self.request.user).order_by('-updated_at')
+
+
+class MessageListAPIView(generics.ListAPIView):
+    serializer_class = MessageSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        chat_id = self.kwargs['chat_id']
+        # تأكد من أن المستخدم مشارك في المحادثة
+        chat = Chat.objects.filter(id=chat_id, participants=self.request.user).first()
+        if not chat:
+            return Message.objects.none()
+        # ارجع الرسائل في المحادثة، الأحدث أولاً
+        return Message.objects.filter(chat=chat).order_by('created_at')  # ترتيب قديم إلى جديد
+
+
+class MessageCreateAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, chat_id):
+        # تحقق أن المستخدم مشارك في المحادثة
+        chat = Chat.objects.filter(id=chat_id, participants=request.user).first()
+        if not chat:
+            return Response({'detail': 'غير مصرح أو المحادثة غير موجودة'}, status=status.HTTP_403_FORBIDDEN)
+
+        content = request.data.get('content', '').strip()
+        if not content:
+            return Response({'detail': 'المحتوى مطلوب'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # إنشاء رسالة جديدة
+        message = Message.objects.create(chat=chat, sender=request.user, content=content)
+        serializer = MessageSerializer(message)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
+    

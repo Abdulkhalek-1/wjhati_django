@@ -7,7 +7,17 @@ from django.db.models import Sum, F
 from django.db.models.functions import Cast
 from django.core.exceptions import ValidationError
 from django.db.models import IntegerField
+from django.contrib.auth import get_user_model
+from django.db import models
+from django.contrib.auth import get_user_model
+from django.db.models import Q, F
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
+from django.core.validators import FileExtensionValidator
 
+User = get_user_model()
+
+User = get_user_model()
 # ============================
 # نموذج أساسي للوقت
 # ============================
@@ -527,73 +537,115 @@ class Rating(BaseModel):
 # ============================
 # نموذج المحادثة والدردشة
 # ============================
+
+
+
+
 class Chat(BaseModel):
-    """
-    يمثل دردشة بين مستخدمين، وقد تكون محادثة فردية أو جماعية.
-    """
     participants = models.ManyToManyField(
         User,
         related_name='chats',
-        verbose_name=_("المشاركون")
+        verbose_name="المشاركون"
     )
-    is_group = models.BooleanField(default=False, verbose_name=_("محادثة جماعية"))
+    is_group = models.BooleanField(default=False, verbose_name="محادثة جماعية")
     title = models.CharField(
         max_length=100,
         null=True,
         blank=True,
-        verbose_name=_("عنوان المحادثة")
+        verbose_name="عنوان المحادثة"
+    )
+    last_message = models.ForeignKey(
+        'Message',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+        verbose_name="آخر رسالة"
     )
 
     class Meta:
-        verbose_name = _("محادثة")
-        verbose_name_plural = _("المحادثات")
+        verbose_name = "محادثة"
+        verbose_name_plural = "المحادثات"
         ordering = ['-updated_at']
+        indexes = [
+            models.Index(fields=['updated_at']),
+            models.Index(fields=['is_group']),
+        ]
 
     def __str__(self):
         if self.is_group:
-            return self.title or f"Group Chat #{self.id}"
-        participants = self.participants.all()
-        if participants.count() >= 2:
-            return f"Chat بين {participants[0]} و {participants[1]}"
-        return f"Chat #{self.id}"
+            return self.title or f"المجموعة #{self.id}"
+        participants = self.participants.order_by('id').exclude(id=self.last_message.sender.id if self.last_message else None)
+        if participants.count() == 1:
+            return f"محادثة مع {participants.first()}"
+        return f"محادثة #{self.id}"
 
+    def update_last_message(self):
+        last_msg = self.messages.order_by('-created_at').first()
+        updated_at_value = last_msg.created_at if last_msg else None
+        Chat.objects.filter(id=self.id).update(
+            last_message=last_msg,
+            updated_at=updated_at_value
+        )
 
 class Message(BaseModel):
-    """
-    يمثل رسالة ضمن محادثة مع إمكانية إرسال مرفقات.
-    """
     chat = models.ForeignKey(
         Chat,
         on_delete=models.CASCADE,
         related_name='messages',
-        verbose_name=_("المحادثة")
+        verbose_name="المحادثة"
     )
     sender = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
         related_name='sent_messages',
-        verbose_name=_("المرسل")
+        verbose_name="المرسل"
     )
-    content = models.TextField(verbose_name=_("المحتوى"))
+    content = models.TextField(verbose_name="المحتوى", blank=True, null=True)
     attachment = models.FileField(
-        upload_to='',
+        upload_to='chat_attachments/%Y/%m/%d/',
+        validators=[
+            FileExtensionValidator(allowed_extensions=['jpg', 'jpeg', 'png', 'gif', 'pdf', 'doc', 'docx', 'mp3', 'mp4'])
+        ],
         null=True,
         blank=True,
-        verbose_name=_("مرفق")
+        verbose_name="مرفق"
     )
-    is_read = models.BooleanField(default=False, verbose_name=_("تم القراءة"))
+    is_read = models.BooleanField(default=False, verbose_name="تم القراءة")
 
     class Meta:
-        verbose_name = _("رسالة")
-        verbose_name_plural = _("الرسائل")
+        verbose_name = "رسالة"
+        verbose_name_plural = "الرسائل"
         ordering = ['-created_at']
         indexes = [
             models.Index(fields=['is_read']),
+            models.Index(fields=['created_at']),
+            models.Index(fields=['chat', 'created_at']),
         ]
 
     def __str__(self):
-        return f"{self.sender.username}: {self.content[:50]}"
+        return f"{self.sender.username}: {self.content[:50] if self.content else 'مرفق'}"
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self.chat.update_last_message()
+
+@receiver(post_delete, sender=Message)
+def delete_empty_chats(sender, instance, **kwargs):
+    if not instance.chat.messages.exists():
+        instance.chat.delete()
+
+class UserProfile(models.Model):
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='profile'
+    )
+    online_status = models.BooleanField(default=False)
+    last_seen = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user.username} Profile"
 
 # ============================
 # نموذج تذاكر الدعم الفني

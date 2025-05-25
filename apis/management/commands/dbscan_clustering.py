@@ -50,7 +50,7 @@ class Command(BaseCommand):
             logger.info("Running intelligent trip scheduler with DBSCAN...")
             self.run_scheduler(options)
             self.stdout.write(self.style.SUCCESS("✅ تم تنفيذ الجولة. بانتظار الجولة التالية بعد 5 دقائق..."))
-            time.sleep(20)
+            time.sleep(300)
 
     def run_scheduler(self, options):
         min_cluster_size = options['min_cluster_size']

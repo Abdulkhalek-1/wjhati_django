@@ -1,14 +1,12 @@
 from rest_framework import serializers
 from .models import *
+from django.contrib.auth import get_user_model
+User = get_user_model()
+
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['username', 'email', 'password']
-        extra_kwargs = {'password': {'write_only': True}}
-
-    def create(self, validated_data):
-        user = User.objects.create_user(**validated_data)
-        return user
+        fields = ['id', 'username', 'email']
 
 class ClientSerializer(serializers.ModelSerializer):
     class Meta:
@@ -48,16 +46,6 @@ class BookingSerializer(serializers.ModelSerializer):
 class RatingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Rating
-        fields = '__all__'
-
-class ChatSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Chat
-        fields = '__all__'
-
-class MessageSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Message
         fields = '__all__'
 
 class SupportTicketSerializer(serializers.ModelSerializer):
@@ -110,3 +98,18 @@ class CasheItemDeliverySerializer(serializers.ModelSerializer):
         model = CasheItemDelivery
         fields = '__all__'
 
+
+class MessageSerializer(serializers.ModelSerializer):
+    sender = UserSerializer(read_only=True)
+
+    class Meta:
+        model = Message
+        fields = ['id', 'chat', 'sender', 'content', 'attachment', 'is_read', 'created_at']
+
+class ChatSerializer(serializers.ModelSerializer):
+    participants = UserSerializer(many=True, read_only=True)
+    last_message = MessageSerializer(read_only=True)
+
+    class Meta:
+        model = Chat
+        fields = ['id', 'title', 'is_group', 'participants', 'last_message', 'updated_at']

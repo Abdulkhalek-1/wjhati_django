@@ -96,6 +96,16 @@ class WalletSignals:
 
 
 #     هذي الاشار مخصصة لتغيير حالة المستخدم بحيث اذا تم اضافته الى رحلة يتم تغيير حالة
+@receiver(post_save, sender=User)
+def create_user_chat(sender, instance, created, **kwargs):
+    """إنشاء محادثة تلقائية للمستخدم الجديد"""
+    if created:
+        try:
+            chat = Chat.objects.create(title=f"Chat for {instance.username}")
+            chat.participants.add(instance)
+            logger.info(f"تم إنشاء محادثة جديدة للمستخدم {instance.username}")
+        except Exception as e:
+            logger.error(f"فشل في إنشاء محادثة للمستخدم {instance.username}: {e}")
 
 @receiver(post_save, sender=Trip)
 def mark_driver_unavailable(sender, instance, created, **kwargs):

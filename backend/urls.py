@@ -15,6 +15,12 @@ urlpatterns = [
     path("api-auth/", include("rest_framework.urls")),
     path('api/register/', RegisterView.as_view(), name='register'),
     path("",include('apis.urls')),
+    path('chats/', ChatListAPIView.as_view(), name='chat-list'),
+    path('chats/<int:chat_id>/messages/', MessageListAPIView.as_view(), name='chat-messages'),
+    path('chats/<int:chat_id>/messages/', MessageListAPIView.as_view(), name='messages-list'),
+    path('chats/<int:chat_id>/messages/send/', MessageCreateAPIView.as_view(), name='messages-send'),
 
 ] + static ( settings.MEDIA_URL, document_root= settings.MEDIA_ROOT)
 urlpatterns += staticfiles_urlpatterns()
+
+
