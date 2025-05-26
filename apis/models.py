@@ -1,23 +1,11 @@
 from django.db import models
 from django.utils.translation import gettext_lazy as _
-from django.contrib.auth.models import User
-from django.core.validators import MinValueValidator, MaxValueValidator, RegexValidator
-import uuid
-from django.db.models import Sum, F
-from django.db.models.functions import Cast
+from django.contrib.auth import get_user_model
+from django.core.validators import MinValueValidator, MaxValueValidator, RegexValidator, FileExtensionValidator
 from django.core.exceptions import ValidationError
-from django.db.models import IntegerField
-from django.contrib.auth import get_user_model
-from django.db import models
-from django.contrib.auth import get_user_model
-from django.db.models import Q, F
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
-from django.core.validators import FileExtensionValidator
-from django.db import models
-from django.contrib.contenttypes.fields import GenericForeignKey
-from django.contrib.contenttypes.models import ContentType
-User = get_user_model()
+import uuid
 
 User = get_user_model()
 # ============================
@@ -69,67 +57,42 @@ class Client(BaseModel):
 # ============================
 # نموذج المحفظة الإلكترونية
 # ============================
+
+
 class Wallet(BaseModel):
-    """
-    يمثل المحفظة الإلكترونية للمستخدم مع طرق للتعامل مع الرصيد.
-    """
-    CURRENCY_CHOICES = (
-        ('YE', 'ريال يمني'),
-    )
-    
-    user = models.OneToOneField(
-        User,
-        on_delete=models.CASCADE,
-        related_name='wallet',
-        verbose_name=_("المستخدم")
-    )
-    balance = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0.00,
-        verbose_name=_("الرصيد")
-    )
-    currency = models.CharField(
-        max_length=3,
-        choices=CURRENCY_CHOICES,
-        default='YE',
-        verbose_name=_("العملة")
-    )
-    is_locked = models.BooleanField(
-        default=False,
-        verbose_name=_("محظورة"),
-        help_text=_("يمنع إجراء المعاملات إذا كانت المحفظة محظورة")
-    )
+    CURRENCY_CHOICES = (('YE', 'ريال يمني'),)
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='wallet', verbose_name=_("المستخدم"))
+    balance = models.DecimalField(max_digits=15, decimal_places=2, default=0.00, verbose_name=_("الرصيد"))
+    currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='YE', verbose_name=_("العملة"))
+    is_locked = models.BooleanField(default=False, verbose_name=_("محظورة"))
+
+    def credit(self, amount):
+        if amount > 0:
+            self.balance += amount
+            self.save(update_fields=['balance'])
+
+    def debit(self, amount):
+        if amount > 0 and self.balance >= amount:
+            self.balance -= amount
+            self.save(update_fields=['balance'])
+        else:
+            raise ValueError(_("رصيد غير كافٍ."))
+
+    def __str__(self):
+        return f"{self.user.username} - {self.balance} {self.currency}"
 
     class Meta:
         verbose_name = _("محفظة")
         verbose_name_plural = _("المحافظ")
 
-    def __str__(self):
-        return f"{self.user.username} - {self.balance} {self.currency}"
-
-    def credit(self, amount):
-        """زيادة رصيد المحفظة"""
-        if amount > 0:
-            self.balance += amount
-            self.save()
-
-    def debit(self, amount):
-        """خصم مبلغ من المحفظة مع التحقق من الرصيد"""
-        if amount > 0 and self.balance >= amount:
-            self.balance -= amount
-            self.save()
-        else:
-            raise ValueError(_("رصيد غير كافٍ."))
-
 
 # ============================
 # نموذج المعاملات المالية
 # ============================
+
+
 class Transaction(BaseModel):
-    """
-    يمثل عملية مالية (شحن، تحويل، سحب، دفع، استرداد) على المحفظة.
-    """
     TRANSACTION_TYPES = [
         ('charge', _("شحن")),
         ('transfer', _("تحويل")),
@@ -144,64 +107,30 @@ class Transaction(BaseModel):
         CANCELLED = 'cancelled', _("ملغى")
         FAILED = 'failed', _("فشل")
 
-    wallet = models.ForeignKey(
-        Wallet,
-        on_delete=models.CASCADE,
-        related_name='transactions',
-        verbose_name=_("المحفظة")
-    )
-    transaction_type = models.CharField(
-        max_length=10,
-        choices=TRANSACTION_TYPES,
-        verbose_name=_("نوع العملية")
-    )
-    amount = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        verbose_name=_("المبلغ")
-    )
-    status = models.CharField(
-        max_length=20,
-        choices=Status.choices,
-        default=Status.PENDING,
-        verbose_name=_("الحالة")
-    )
-    reference_number = models.CharField(
-        max_length=50,
-        unique=True,
-        null=True,
-        blank=True,
-        verbose_name=_("رقم المرجع")
-    )
-    description = models.TextField(
-        blank=True,
-        null=True,
-        verbose_name=_("الوصف")
-    )
-    metadata = models.JSONField(
-        default=dict,
-        blank=True,
-        verbose_name=_("بيانات إضافية")
-    )
-
-    class Meta:
-        verbose_name = _("عملية")
-        verbose_name_plural = _("العمليات")
-        indexes = [
-            models.Index(fields=['transaction_type']),
-            models.Index(fields=['status']),
-        ]
-        ordering = ['-created_at']
-
-    def __str__(self):
-        return f"{self.get_transaction_type_display()} - {self.amount} {self.wallet.currency}"
+    wallet = models.ForeignKey(Wallet, on_delete=models.CASCADE, related_name='transactions', verbose_name=_("المحفظة"))
+    transaction_type = models.CharField(max_length=10, choices=TRANSACTION_TYPES, verbose_name=_("نوع العملية"))
+    amount = models.DecimalField(max_digits=15, decimal_places=2, verbose_name=_("المبلغ"))
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING, verbose_name=_("الحالة"))
+    reference_number = models.CharField(max_length=50, unique=True, null=True, blank=True, verbose_name=_("رقم المرجع"))
+    description = models.TextField(blank=True, null=True, verbose_name=_("الوصف"))
+    metadata = models.JSONField(default=dict, blank=True, verbose_name=_("بيانات إضافية"))
 
     def save(self, *args, **kwargs):
-        """إنشاء رقم مرجعي تلقائي إذا لم يكن موجودًا."""
         if not self.reference_number:
             self.reference_number = str(uuid.uuid4()).split('-')[0].upper()
         super().save(*args, **kwargs)
 
+    def __str__(self):
+        return f"{self.get_transaction_type_display()} - {self.amount} {self.wallet.currency}"
+
+    class Meta:
+        verbose_name = _("عملية")
+        verbose_name_plural = _("العمليات")
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['transaction_type']),
+            models.Index(fields=['status']),
+        ]
 
 # ============================
 # نموذج المركبة
@@ -794,43 +723,42 @@ class Notification(BaseModel):
 # ============================
 # نموذج التحويل المالي بين المحافظ
 # ============================
+
+
 class Transfer(BaseModel):
-    """
-    يمثل عملية تحويل مالي بين محافظ المستخدمين.
-    """
     class Status(models.TextChoices):
         PENDING = 'pending', _("قيد الانتظار")
         COMPLETED = 'completed', _("مكتمل")
         CANCELLED = 'cancelled', _("ملغى")
         FAILED = 'failed', _("فشل")
 
-    from_wallet = models.ForeignKey(
-        Wallet,
-        on_delete=models.CASCADE,
-        related_name='transfers_sent',
-        verbose_name=_("محفظة المرسل")
-    )
-    to_wallet = models.ForeignKey(
-        Wallet,
-        on_delete=models.CASCADE,
-        related_name='transfers_received',
-        verbose_name=_("محفظة المستقبل")
-    )
-    amount = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        verbose_name=_("المبلغ")
-    )
-    status = models.CharField(
-        max_length=20,
-        choices=Status.choices,
-        default=Status.PENDING,
-        verbose_name=_("الحالة")
-    )
-    transfer_code = models.CharField(
-        max_length=10,
-        verbose_name=_("رمز التحويل")
-    )
+    from_wallet = models.ForeignKey(Wallet, on_delete=models.CASCADE, related_name='transfers_sent', verbose_name=_("محفظة المرسل"))
+    to_wallet = models.ForeignKey(Wallet, on_delete=models.CASCADE, related_name='transfers_received', verbose_name=_("محفظة المستقبل"))
+    amount = models.DecimalField(max_digits=15, decimal_places=2, verbose_name=_("المبلغ"))
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING, verbose_name=_("الحالة"))
+    transfer_code = models.CharField(max_length=10, unique=True, verbose_name=_("رمز التحويل"))
+
+    def save(self, *args, **kwargs):
+        if not self.transfer_code:
+            self.transfer_code = str(uuid.uuid4()).split('-')[0].upper()
+        super().save(*args, **kwargs)
+
+    def process_transfer(self):
+        if self.status != self.Status.PENDING:
+            raise ValueError(_("لا يمكن معالجة تحويل غير قيد الانتظار."))
+
+        if self.from_wallet.balance < self.amount:
+            self.status = self.Status.FAILED
+            self.save(update_fields=['status'])
+            raise ValueError(_("رصيد المرسل غير كافٍ."))
+
+        self.from_wallet.debit(self.amount)
+        self.to_wallet.credit(self.amount)
+        self.status = self.Status.COMPLETED
+        self.save(update_fields=['status'])
+
+    def __str__(self):
+        return f"تحويل {self.amount} من {self.from_wallet.user.username} إلى {self.to_wallet.user.username}"
 
     class Meta:
         verbose_name = _("تحويل مالي")
@@ -839,24 +767,6 @@ class Transfer(BaseModel):
             models.Index(fields=['transfer_code']),
             models.Index(fields=['status']),
         ]
-
-    def __str__(self):
-        return f"تحويل {self.amount} من {self.from_wallet.user.username} إلى {self.to_wallet.user.username}"
-
-    def process_transfer(self):
-        """
-        تنفيذ عملية التحويل المالي مع التحقق من الرصيد.
-        """
-        if self.from_wallet.balance < self.amount:
-            self.status = self.Status.FAILED
-            self.save()
-            raise ValueError(_("رصيد المرسل غير كافٍ."))
-        # خصم المبلغ من المحفظة المرسلة
-        self.from_wallet.debit(self.amount)
-        # إضافة المبلغ إلى المحفظة المستقبلة
-        self.to_wallet.credit(self.amount)
-        self.status = self.Status.COMPLETED
-        self.save()
 
 
 # ============================
@@ -936,21 +846,10 @@ class Subscription(BaseModel):
 # ============================
 # نموذج المكافآت
 # ============================
+
 class Bonus(BaseModel):
-    """
-    يمثل مكافأة مالية للمستخدم نتيجة إحالة أو عرض ترويجي أو غير ذلك.
-    """
-    user = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name='bonuses',
-        verbose_name=_("المستخدم")
-    )
-    amount = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        verbose_name=_("المبلغ")
-    )
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='bonuses', verbose_name=_("المستخدم"))
+    amount = models.DecimalField(max_digits=10, decimal_places=2, verbose_name=_("المبلغ"))
     reason = models.CharField(
         max_length=255,
         choices=[
@@ -961,22 +860,16 @@ class Bonus(BaseModel):
         default='other',
         verbose_name=_("السبب")
     )
-    expiration_date = models.DateField(
-        null=True,
-        blank=True,
-        verbose_name=_("تاريخ الانتهاء")
-    )
+    expiration_date = models.DateField(null=True, blank=True, verbose_name=_("تاريخ الانتهاء"))
+    processed = models.BooleanField(default=False, verbose_name=_("معالجة"))
+
+    def __str__(self):
+        return f"{self.user.username} - {self.amount} ريال ({self.get_reason_display()})"
 
     class Meta:
         verbose_name = _("مكافأة")
         verbose_name_plural = _("المكافآت")
-        indexes = [
-            models.Index(fields=['expiration_date']),
-        ]
-
-    def __str__(self):
-        return f"{self.user.username} - {self.amount} ريال يمني ({self.get_reason_display()})"
-
+        indexes = [models.Index(fields=['expiration_date'])]
 
 # ============================
 # نموذج محطات توقف الرحلة
@@ -1169,24 +1062,3 @@ class CasheItemDelivery(BaseModel):
 
     def __str__(self):
         return f"طلب توصيل #{self.id} - {self.user.user.username}"
-
-
-
-class RetryQueue(models.Model):
-    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
-    object_id = models.PositiveIntegerField()
-    content_object = GenericForeignKey('content_type', 'object_id')
-    
-    retry_count = models.PositiveIntegerField(default=0)
-    next_retry = models.DateTimeField()
-    last_error = models.CharField(max_length=200)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        indexes = [
-            models.Index(fields=['content_type', 'object_id']),
-            models.Index(fields=['next_retry']),
-        ]
-
-    def __str__(self):
-        return f"Retry attempt {self.retry_count} for {self.content_object}"
