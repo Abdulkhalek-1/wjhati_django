@@ -1,169 +1,186 @@
+# File: apis/management/commands/dbscan_scheduler.py
 import logging
-import numpy as np
 import time
-from datetime import timedelta
-from math import radians, cos, sin, asin, sqrt
+import numpy as np
+from math import radians, sin, cos, sqrt, asin
 from django.core.management.base import BaseCommand
 from django.utils.timezone import now
 from django.db import transaction
 from sklearn.preprocessing import StandardScaler
-from itertools import permutations
 import hdbscan
-from apis.models import CasheBooking, Trip, Driver, Booking
-import warnings
-import warnings
-warnings.filterwarnings("ignore", category=FutureWarning)
 
+from apis.models import (
+    CasheBooking, Booking,
+    CasheItemDelivery, ItemDelivery,
+    Driver, Trip
+)
+from apis.driver_selector import select_best_driver
+from apis.route_optimizer import nearest_neighbor_route
+from apis.retry_queue import add_to_retry_queue
 
 logger = logging.getLogger(__name__)
 
-def haversine_distance(lat1, lon1, lat2, lon2):
-    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
-    dlon = lon2 - lon1
-    dlat = lat2 - lat1
-    a = sin(dlat / 2)**2 + cos(lat1) * cos(lat2) * sin(dlon / 2)**2
-    c = 2 * asin(sqrt(a))
-    return 6371 * c
-
-def optimize_route(locations):
-    if len(locations) <= 2:
-        return locations
-    best_order = None
-    min_total = float('inf')
-    for perm in permutations(locations[1:]):
-        route = [locations[0]] + list(perm)
-        total_dist = sum(haversine_distance(*route[i], *route[i+1]) for i in range(len(route) - 1))
-        if total_dist < min_total:
-            min_total = total_dist
-            best_order = route
-    return best_order
-
 class Command(BaseCommand):
-    help = '🚀 جدولة الرحلات الذكية باستخدام HDBSCAN لتحسين تحليل الوجهات.'
+    help = '🚀 جدولة الرحلات الذكية بشكل دوري مع دعم الدمج بين الشحنات والركاب.'
 
     def add_arguments(self, parser):
         parser.add_argument('--min_cluster_size', type=int, default=3)
+        parser.add_argument('--interval', type=int, default=20,
+                            help='زمن الانتظار بالثواني بين كل جولة جدولية')
 
     def handle(self, *args, **options):
+        interval = options['interval']
+        self.stdout.write(self.style.NOTICE("🔄 بدء البث الدوري لجدولة الرحلات..."))
         while True:
-            self.stdout.write(self.style.NOTICE("\n🔄 بدء تنفيذ جدولة الرحلات الذكية..."))
-            logger.info("Running intelligent trip scheduler with DBSCAN...")
-            self.run_scheduler(options)
-            self.stdout.write(self.style.SUCCESS("✅ تم تنفيذ الجولة. بانتظار الجولة التالية بعد 5 دقائق..."))
-            time.sleep(300)
+            start_ts = now()
+            self.stdout.write(self.style.NOTICE(f"🔁 بدء الجولة في {start_ts}"))
+            try:
+                self.run_scheduler(options)
+                self.stdout.write(self.style.SUCCESS("✅ انتهت الجولة بنجاح."))
+            except Exception:
+                logger.exception("⚠️ فشل الجولة الجدولية.")
+            self.stdout.write(self.style.NOTICE(f"⏱️ النوم لـ {interval} ثانية..."))
+            time.sleep(interval)
+
+    def find_pending_trip(self, from_loc, to_loc):
+        return Trip.objects.filter(
+            from_location=from_loc,
+            to_location=to_loc,
+            status__in=[Trip.Status.PENDING, Trip.Status.IN_PROGRESS],
+            available_seats__gt=0
+        ).order_by('departure_time').first()
 
     def run_scheduler(self, options):
-        min_cluster_size = options['min_cluster_size']
+        # 1. جمع الطلبات المعلقة
+        bookings = list(CasheBooking.objects.filter(status=CasheBooking.Status.PENDING))
+        deliveries = list(CasheItemDelivery.objects.filter(status=CasheItemDelivery.Status.PENDING))
+        requests = bookings + deliveries
 
-        bookings = CasheBooking.objects.filter(status=CasheBooking.Status.PENDING)
-        coords, valid_bookings = [], []
-
-        for b in bookings:
+        # 2. استخراج الإحداثيات
+        coords, items = [], []
+        for req in requests:
             try:
-                from_lat, from_lon = map(float, b.from_location.split(','))
-                to_lat, to_lon = map(float, b.to_location.split(','))
-                mid_lat = (from_lat + to_lat) / 2
-                mid_lon = (from_lon + to_lon) / 2
-                coords.append([mid_lat, mid_lon])
-                valid_bookings.append(b)
+                lat, lon = map(float, req.from_location.split(','))
+                coords.append([lat, lon])
+                items.append(req)
             except Exception as e:
-                logger.warning(f"📛 Booking {b.id} has invalid coordinates: {e}")
+                logger.warning(f"⚠️ طلب {req.id} إحداثيات غير صالحة: {e}")
+                add_to_retry_queue(req, str(e))
 
         if not coords:
-            self.stdout.write(self.style.WARNING("❌ لا توجد حجوزات بصيغة إحداثيات صالحة."))
+            self.stdout.write(self.style.WARNING("🚫 لا توجد طلبات صالحه للمعالجة."))
             return
 
-        X = StandardScaler().fit_transform(np.array(coords))
-        clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size)
-        labels = clusterer.fit_predict(X)
+        # 3. تجميع باستخدام HDBSCAN
+        scaled = StandardScaler().fit_transform(np.array(coords))
+        labels = hdbscan.HDBSCAN(min_cluster_size=options['min_cluster_size']).fit_predict(scaled)
 
+        # 4. قائمة السائقين المتاحين
         drivers = Driver.objects.filter(is_available=True).prefetch_related('vehicles').select_related('user')
         if not drivers.exists():
             self.stdout.write(self.style.ERROR("🚫 لا يوجد سائقون متاحون."))
             return
 
-        for cid in set(labels):
-            if cid == -1:
-                continue
+        # 5. المعالجة العنقودية
+        label_set = set(labels)
+        if label_set == {-1}:
+            logger.info("⚠️ جميع النقاط ضوضاء. معالجة كل طلبٍ على حدة.")
+            for req in items:
+                self.process_cluster([req])
+        else:
+            for cid in label_set - {-1}:
+                cluster_items = [items[i] for i, lbl in enumerate(labels) if lbl == cid]
+                if not cluster_items:
+                    continue
+                logger.info(f"ℹ️ معالجة العنقود {cid} بعدد عناصر {len(cluster_items)}")
+                self.process_cluster(cluster_items)
 
-            cluster_indices = [i for i, label in enumerate(labels) if label == cid]
-            group = [valid_bookings[i] for i in cluster_indices]
-            if not group:
-                continue
+    def process_cluster(self, cluster_items):
+        # تصنيف الركاب والشحنات
+        bookings = [r for r in cluster_items if hasattr(r, 'passengers')]
+        deliveries = [r for r in cluster_items if hasattr(r, 'weight')]
+        group = cluster_items
 
-            sample = group[0]
-            driver = self.select_driver(sample, drivers)
-            if not driver or not driver.vehicles.first():
-                continue
+        # اختيار السائق
+        driver = select_best_driver(group, Driver.objects.filter(is_available=True))
+        if not driver or not driver.vehicles.first():
+            logger.warning("🚫 لم يتم العثور على سائق مناسب للمجموعة.")
+            for r in group:
+                add_to_retry_queue(r, 'no_driver')
+            return
 
-            try:
-                with transaction.atomic():
-                    # الحصول على أول مركبة مرتبطة بالسائق
-                    vehicle = driver.vehicles.first()
-                    if not vehicle:
-                        logger.warning(f"🚫 السائق {driver.user.username} لا يملك مركبة مرتبطة. تخطي السائق.")
-                        continue  # تخطي السائق إذا لم يكن لديه مركبة
+        vehicle = driver.vehicles.first()
+        from_loc = group[0].from_location
+        to_loc = group[0].to_location
 
-                    # إنشاء الرحلة
-                    trip = Trip.objects.create(
-                        from_location=sample.from_location,
-                        to_location=sample.to_location,
-                        departure_time=sample.departure_time,
-                        available_seats=vehicle.capacity,
-                        price_per_seat=25.0,
-                        driver=driver,
-                        vehicle=vehicle,  # تعيين المركبة هنا
-                        route_coordinates=str({
-                            "pickup": optimize_route([list(map(float, b.from_location.split(','))) for b in group]),
-                            "dropoff": optimize_route([list(map(float, b.to_location.split(','))) for b in group]),
-                        })
-                    )
+        # البحث عن رحلة معلقة
+        trip = self.find_pending_trip(from_loc, to_loc)
 
-                    # تحديث حالة السائق
-                    driver.is_available = False
-                    driver.save(update_fields=['is_available'])
+        # تحسين المسارات
+        pickups = [list(map(float, r.from_location.split(','))) for r in group]
+        drops = [list(map(float, r.to_location.split(','))) for r in group]
+        pickup_coords = nearest_neighbor_route(pickups)
+        dropoff_coords = nearest_neighbor_route(drops)
 
-                    # معالجة الحجوزات المرتبطة
-                    current_seats = 0
-                    for b in group:
-                        if current_seats + b.passengers > vehicle.capacity:
-                            continue
+        with transaction.atomic():
+            if not trip:
+                trip = Trip.objects.create(
+                    from_location=from_loc,
+                    to_location=to_loc,
+                    departure_time=now(),
+                    available_seats=vehicle.capacity,
+                    price_per_seat=25.0,
+                    driver=driver,
+                    vehicle=vehicle,
+                    route_coordinates=str({'pickup': pickup_coords, 'dropoff': dropoff_coords}),
+                    status=Trip.Status.PENDING
+                )
+                driver.is_available = False
+                driver.save(update_fields=['is_available'])
+
+            seats_used = vehicle.capacity - trip.available_seats
+
+            # إضافة الحجوزات
+            for b in bookings:
+                try:
+                    if seats_used + b.passengers <= vehicle.capacity:
                         Booking.objects.create(
                             trip=trip,
                             customer=b.user,
-                            seats=[str(i + 1) for i in range(current_seats, current_seats + b.passengers)],
+                            seats=[str(i+1) for i in range(seats_used, seats_used + b.passengers)],
                             total_price=b.passengers * trip.price_per_seat,
                             status=Booking.Status.CONFIRMED
                         )
                         b.status = CasheBooking.Status.ACCEPTED
                         b.save(update_fields=['status'])
-                        current_seats += b.passengers
+                        seats_used += b.passengers
+                except Exception as e:
+                    logger.exception(f"❌ فشل إضافة حجز {b.id}: {e}")
+                    add_to_retry_queue(b, str(e))
 
-                    # تحديث عدد المقاعد المتاحة وحالة الرحلة
-                    trip.available_seats = vehicle.capacity - current_seats
-                    if trip.available_seats == 0:
-                        trip.status = 'full'
-                    trip.save(update_fields=['available_seats', 'status'])
-
-                    self.stdout.write(self.style.SUCCESS(f"🚌 تم إنشاء الرحلة {trip.id} للسائق {driver.user.username}"))
-            except Exception as e:
-                logger.exception(f"❌ فشل إنشاء الرحلة: {e}")
-
-    def select_driver(self, booking, drivers):
-        try:
-            pickup_lat, pickup_lon = map(float, booking.from_location.split(','))
-            drop_lat, drop_lon = map(float, booking.to_location.split(','))
-            scored = []
-            for d in drivers:
+            # إضافة الشحنات
+            for d in deliveries:
                 try:
-                    d_lat, d_lon = map(float, d.where_location.split(','))
-                    dist1 = haversine_distance(d_lat, d_lon, pickup_lat, pickup_lon)
-                    dist2 = haversine_distance(d_lat, d_lon, drop_lat, drop_lon)
-                    score = (dist1 + dist2) / 2
-                except:
-                    score = float('inf')
-                scored.append((score, d))
-            return sorted(scored, key=lambda x: x[0])[0][1]
-        except Exception as e:
-            logger.error(f"⚠️ فشل اختيار السائق: {e}")
-            return None
+                    ItemDelivery.objects.create(
+                        trip=trip,
+                        sender=d.user.user,
+                        receiver_name='Unknown',
+                        receiver_phone='000000000',
+                        item_description=d.item_description,
+                        weight=d.weight,
+                        insurance_amount=0,
+                        delivery_code=f"D{d.id:06d}",
+                        status=ItemDelivery.Status.IN_TRANSIT
+                    )
+                    d.status = CasheItemDelivery.Status.ACCEPTED
+                    d.save(update_fields=['status'])
+                except Exception as e:
+                    logger.exception(f"❌ فشل إضافة شحنة {d.id}: {e}")
+                    add_to_retry_queue(d, str(e))
+
+            # تحديث حالة الرحلة
+            trip.available_seats = vehicle.capacity - seats_used
+            trip.status = Trip.Status.FULL if trip.available_seats <= 0 else Trip.Status.IN_PROGRESS
+            trip.save(update_fields=['available_seats','status'])
+
+            logger.info(f"🚌 {'تم إنشاء' if seats_used == 0 else 'تم تحديث'} الرحلة {trip.id} للسائق {driver.user.username}")

@@ -1,4 +1,4 @@
-from .models import Chat, Message, FCMToken, Wallet, Transaction, Vehicle, Driver, Trip, Booking, Rating, SupportTicket, Notification, Transfer, SubscriptionPlan, Subscription, Bonus, TripStop, ItemDelivery, CasheBooking, CasheItemDelivery
+from .models import Client , Chat, Message, FCMToken, Wallet, Transaction, Vehicle, Driver, Trip, Booking, Rating, SupportTicket, Notification, Transfer, SubscriptionPlan, Subscription, Bonus, TripStop, ItemDelivery, CasheBooking, CasheItemDelivery
 from .serializers import ChatSerializer, MessageSerializer, UserSerializer, ClientSerializer, WalletSerializer, TransactionSerializer, VehicleSerializer, DriverSerializer, TripSerializer, BookingSerializer, RatingSerializer, SupportTicketSerializer, NotificationSerializer, TransferSerializer, SubscriptionPlanSerializer, SubscriptionSerializer, BonusSerializer, TripStopSerializer, ItemDeliverySerializer, CasheBookingSerializer, CasheItemDeliverySerializer
 from rest_framework import viewsets, permissions, status, generics
 from rest_framework.decorators import action
@@ -21,17 +21,21 @@ class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
 
-
 class ClientViewSet(viewsets.ModelViewSet):
+    """
+    واجهة للتعامل مع بيانات العملاء.
+    """
     serializer_class = ClientSerializer
     permission_classes = [IsAuthenticated]
-    
+
     def get_queryset(self):
-        messages_prefetch = Prefetch(
-            'messages',
-            queryset=Message.objects.order_by('-created_at')
-        )
-        return Chat.objects.prefetch_related(messages_prefetch)
+        """
+        جلب بيانات العميل المرتبطة بالمستخدم الحالي.
+        """
+        user = self.request.user
+        if hasattr(user, 'client'):
+            return Client.objects.filter(user=user)
+        return Client.objects.none()
 
 class WalletViewSet(viewsets.ModelViewSet):
     serializer_class = WalletSerializer

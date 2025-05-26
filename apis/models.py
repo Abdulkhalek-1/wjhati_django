@@ -14,7 +14,9 @@ from django.db.models import Q, F
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
 from django.core.validators import FileExtensionValidator
-
+from django.db import models
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.models import ContentType
 User = get_user_model()
 
 User = get_user_model()
@@ -1167,3 +1169,24 @@ class CasheItemDelivery(BaseModel):
 
     def __str__(self):
         return f"طلب توصيل #{self.id} - {self.user.user.username}"
+
+
+
+class RetryQueue(models.Model):
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id = models.PositiveIntegerField()
+    content_object = GenericForeignKey('content_type', 'object_id')
+    
+    retry_count = models.PositiveIntegerField(default=0)
+    next_retry = models.DateTimeField()
+    last_error = models.CharField(max_length=200)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['content_type', 'object_id']),
+            models.Index(fields=['next_retry']),
+        ]
+
+    def __str__(self):
+        return f"Retry attempt {self.retry_count} for {self.content_object}"

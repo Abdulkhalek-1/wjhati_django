@@ -6,6 +6,8 @@ import dj_database_url
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+GDAL_LIBRARY_PATH = r"C:\CGDAL\bin\gdal.dll"
+os.environ['GDAL_LIBRARY_PATH'] = GDAL_LIBRARY_PATH
 
 SECRET_KEY = 'django-insecure-l3t17j@t&60hwwa8ze7^$10zui4ca2!!k^**0h%ujxncmtg^(*'
 
@@ -35,7 +37,17 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
-
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+from celery.schedules import crontab
+CELERY_BEAT_SCHEDULE = {
+    'run-trip-scheduler-every-20-seconds': {
+        'task': 'apis.tasks.run_trip_scheduler',
+        'schedule': timedelta(seconds=20),
+    },
+}
 ROOT_URLCONF = 'backend.urls'
 MEDIA_URL = '/chat_attachments/'  # ← الجزء الأول من المسار
 MEDIA_ROOT = os.path.join(BASE_DIR, 'chat_attachments')
