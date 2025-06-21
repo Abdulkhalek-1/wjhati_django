@@ -8,6 +8,7 @@ from rest_framework.views import APIView
 from django.db.models import Q, Count, Prefetch
 from django.contrib.auth import get_user_model
 import logging
+from django.utils.translation import gettext_lazy as _
 
 User = get_user_model()
 
@@ -67,7 +68,14 @@ class DriverViewSet(viewsets.ModelViewSet):
 
 class TripViewSet(viewsets.ModelViewSet):
     serializer_class = TripSerializer
-    queryset = Trip.objects.all()
+
+    def get_queryset(self):
+        user = self.request.user
+        queryset = Trip.objects.all()
+        # إذا كان المستخدم سائقاً، اعرض له فقط الرحلات التي هو السائق لها
+        if hasattr(user, 'driver'):
+            queryset = queryset.filter(driver=user.driver)
+        return queryset
 
 class BookingViewSet(viewsets.ModelViewSet):
     """
@@ -154,25 +162,38 @@ class CasheItemDeliveryViewSet(viewsets.ModelViewSet):
 
 
 class SaveFCMTokenView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
         token = request.data.get('fcm_token')
         device_info = request.data.get('device_info', {})
 
         if not token:
-            return Response({"error": "FCM token is required"}, status=400)
+            return Response(
+                {'error': _('FCM token is required.')},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        # هنا نحفظ أو نحدّث التوكن للمستخدم
-        FCMToken.objects.update_or_create(
+        # استخدم update_or_create لتحديث السجل إذا وُجد أو إنشائه إذا لم يوجد
+        obj, created = FCMToken.objects.update_or_create(
             token=token,
             defaults={
                 'user': request.user,
-                'device_info': device_info
+                'device_info': device_info,
             }
         )
-        return Response({"message": "FCM token saved successfully"}, status=200)
 
+        if created:
+            message = _('FCM token saved successfully.')
+            response_status = status.HTTP_201_CREATED
+        else:
+            message = _('FCM token updated successfully.')
+            response_status = status.HTTP_200_OK
+
+        return Response(
+            {'message': message, 'created': created},
+            status=response_status
+        )
 
 
 class ChatListAPIView(generics.ListAPIView):
@@ -180,8 +201,29 @@ class ChatListAPIView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        # ارجع كل المحادثات التي يشارك فيها المستخدم مرتبة حسب آخر تحديث
         return Chat.objects.filter(participants=self.request.user).order_by('-updated_at')
+
+
+class ChatCreateOrGetAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        user_id = request.data.get("user_id")
+        if not user_id:
+            return Response({'detail': 'معرّف المستخدم مطلوب'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            other_user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response({'detail': 'المستخدم غير موجود'}, status=status.HTTP_404_NOT_FOUND)
+
+        chat = Chat.objects.filter(participants=request.user).filter(participants=other_user).first()
+        if not chat:
+            chat = Chat.objects.create()
+            chat.participants.set([request.user, other_user])
+
+        serializer = ChatSerializer(chat)
+        return Response(serializer.data)
 
 
 class MessageListAPIView(generics.ListAPIView):
@@ -190,30 +232,35 @@ class MessageListAPIView(generics.ListAPIView):
 
     def get_queryset(self):
         chat_id = self.kwargs['chat_id']
-        # تأكد من أن المستخدم مشارك في المحادثة
         chat = Chat.objects.filter(id=chat_id, participants=self.request.user).first()
         if not chat:
             return Message.objects.none()
-        # ارجع الرسائل في المحادثة، الأحدث أولاً
-        return Message.objects.filter(chat=chat).order_by('created_at')  # ترتيب قديم إلى جديد
+
+        # وضع الرسائل كـ مقروءة
+        chat.messages.filter(is_read=False).exclude(sender=self.request.user).update(is_read=True)
+        return chat.messages.order_by('created_at')
 
 
 class MessageCreateAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, chat_id):
-        # تحقق أن المستخدم مشارك في المحادثة
         chat = Chat.objects.filter(id=chat_id, participants=request.user).first()
         if not chat:
-            return Response({'detail': 'غير مصرح أو المحادثة غير موجودة'}, status=status.HTTP_403_FORBIDDEN)
+            return Response({'detail': 'غير مصرح'}, status=status.HTTP_403_FORBIDDEN)
 
         content = request.data.get('content', '').strip()
-        if not content:
-            return Response({'detail': 'المحتوى مطلوب'}, status=status.HTTP_400_BAD_REQUEST)
+        attachment = request.FILES.get('attachment')
 
-        # إنشاء رسالة جديدة
-        message = Message.objects.create(chat=chat, sender=request.user, content=content)
+        if not content and not attachment:
+            return Response({'detail': 'أدخل محتوى أو مرفق'}, status=status.HTTP_400_BAD_REQUEST)
+
+        message = Message.objects.create(
+            chat=chat,
+            sender=request.user,
+            content=content if content else None,
+            attachment=attachment if attachment else None
+        )
+
         serializer = MessageSerializer(message)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
-    
-    
