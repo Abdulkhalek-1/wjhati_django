@@ -346,7 +346,6 @@ class Trip(models.Model):
 
         self.save(update_fields=['available_seats', 'status'])
 
-
     def clean(self):
         """التحقق من صحة البيانات قبل الحفظ"""
         vehicle = getattr(self.driver, 'vehicle', None)
@@ -365,17 +364,19 @@ class Trip(models.Model):
     def save(self, *args, **kwargs):
         """تجاوز دالة الحفظ لتطبيق القيود المنطقية قبل التخزين"""
         self.clean()
-
-        if self.pk and self.status == self.Status.IN_PROGRESS:
-            original = Trip.objects.get(pk=self.pk)
-            forbidden_fields = ['from_location', 'to_location', 'departure_time', 'vehicle']
-            for field in forbidden_fields:
-                if getattr(self, field) != getattr(original, field):
-                    raise ValidationError(
-                        _(f"لا يمكن تعديل {self._meta.get_field(field).verbose_name} أثناء تنفيذ الرحلة.")
-                    )
-
+        # تم إزالة منع التعديل أثناء التنفيذ للسماح بتعديل البيانات
         super().save(*args, **kwargs)
+
+class TripLog(models.Model):
+    trip = models.ForeignKey(Trip, on_delete=models.CASCADE)
+    driver = models.ForeignKey(Driver, on_delete=models.SET_NULL, null=True)
+    total_requests = models.IntegerField()
+    total_bookings = models.IntegerField()
+    total_deliveries = models.IntegerField()
+    passengers_count = models.IntegerField()
+    total_weight = models.FloatField()
+    created_at = models.DateTimeField()
+
 
 # ============================
 # نموذج الحجز للرحلات
@@ -898,8 +899,10 @@ class ItemDelivery(BaseModel):
         CANCELLED = 'cancelled', _("ملغاة")
 
     trip = models.ForeignKey(
-        Trip,
-        on_delete=models.CASCADE,
+        'Trip',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name='deliveries',
         verbose_name=_("الرحلة")
     )
@@ -1020,6 +1023,8 @@ class CasheItemDelivery(BaseModel):
     )
     from_location = models.CharField(max_length=255, verbose_name=_("من"))
     to_location = models.CharField(max_length=255, verbose_name=_("إلى"))
+    receiver_name = models.CharField(max_length=255, verbose_name=_("اسم المستلم"))
+    receiver_phone = models.CharField(max_length=20, verbose_name=_("هاتف المستلم"))
     item_description = models.TextField(verbose_name=_("وصف الشحنة"))
     weight = models.DecimalField(
         max_digits=10,
@@ -1027,6 +1032,13 @@ class CasheItemDelivery(BaseModel):
         verbose_name=_("الوزن (كجم)")
     )
     urgent = models.BooleanField(default=False, verbose_name=_("عاجل"))
+    insurance_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name=_("مبلغ التأمين")
+    )
     status = models.CharField(
         max_length=20,
         choices=Status.choices,

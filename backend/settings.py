@@ -10,6 +10,20 @@ GDAL_LIBRARY_PATH = r"C:\CGDAL\bin\gdal.dll"
 os.environ['GDAL_LIBRARY_PATH'] = GDAL_LIBRARY_PATH
 
 SECRET_KEY = 'django-insecure-l3t17j@t&60hwwa8ze7^$10zui4ca2!!k^**0h%ujxncmtg^(*'
+LOGGING = {
+    'version': 1,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        'apis.management.commands.dbscan_clustering.py': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+    },
+}
 
 DEBUG = True
 
@@ -71,7 +85,7 @@ import os
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": "naa",
+        "NAME": "FNW",
         "USER": "postgres",
         "PASSWORD": "nahari",
         "HOST": "localhost",

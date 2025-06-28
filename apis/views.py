@@ -9,6 +9,7 @@ from django.db.models import Q, Count, Prefetch
 from django.contrib.auth import get_user_model
 import logging
 from django.utils.translation import gettext_lazy as _
+from rest_framework.exceptions import PermissionDenied
 
 User = get_user_model()
 
@@ -64,7 +65,22 @@ class VehicleViewSet(viewsets.ModelViewSet):
 
 class DriverViewSet(viewsets.ModelViewSet):
     serializer_class = DriverSerializer
-    queryset = Driver.objects.all()
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        # يعرض فقط بيانات السائق المرتبطة بالمستخدم الحالي
+        if hasattr(user, 'driver'):
+            return Driver.objects.filter(user=user)
+        return Driver.objects.none()
+
+    def perform_create(self, serializer):
+        # يجبر ربط السائق بالمستخدم الحالي
+        serializer.save(user=self.request.user)
+
+    def perform_update(self, serializer):
+        # يمنع تغيير المستخدم عند التحديث
+        serializer.save(user=self.request.user)
 
 class TripViewSet(viewsets.ModelViewSet):
     serializer_class = TripSerializer
@@ -75,12 +91,18 @@ class TripViewSet(viewsets.ModelViewSet):
         # إذا كان المستخدم سائقاً، اعرض له فقط الرحلات التي هو السائق لها
         if hasattr(user, 'driver'):
             queryset = queryset.filter(driver=user.driver)
+        # إذا كان المستخدم عميلاً، اعرض له الرحلات التي لديه فيها Booking أو ItemDelivery فقط
+        elif hasattr(user, 'client'):
+            queryset = queryset.filter(
+                Q(bookings__customer=user.client) | Q(deliveries__sender=user)
+            ).distinct()
         return queryset
 
 class BookingViewSet(viewsets.ModelViewSet):
     """
     واجهة للتعامل مع الحجوزات مع فلترة حسب المستخدم والحالة
     """
+    queryset = Booking.objects.all()  # 👈 هذا السطر ضروري
     serializer_class = BookingSerializer
     permission_classes = [IsAuthenticated]
 
@@ -90,26 +112,29 @@ class BookingViewSet(viewsets.ModelViewSet):
         - إذا كان المستخدم عميلاً: يعرض حجوزاته فقط
         - إذا كان المستخدم سائقاً: يعرض حجوزات رحلاته فقط
         - إذا كان مديراً: يعرض جميع الحجوزات
-        مع إمكانية تصفية حسب الحالة
+        مع إمكانية تصفية حسب الحالة أو الرحلة
         """
         user = self.request.user
         queryset = super().get_queryset()
-        
-        # فلترة الحالة إذا كانت موجودة في البارامترات
-        status = self.request.query_params.get('status', None)
+
+        # فلترة حسب رقم الرحلة (trip)
+        trip_id = self.request.query_params.get('trip')
+        if trip_id:
+            queryset = queryset.filter(trip_id=trip_id)
+
+        # فلترة حسب الحالة إن وجدت
+        status = self.request.query_params.get('status')
         if status:
             queryset = queryset.filter(status=status)
-        
-        # إذا كان المستخدم عميلاً
+
         if hasattr(user, 'client'):
             return queryset.filter(customer=user.client)
-        
-        # إذا كان المستخدم سائقاً
+
         elif hasattr(user, 'driver'):
             return queryset.filter(trip__driver=user.driver)
-        
-        # إذا كان مديراً أو لا ينتمي لأي نوع معين
+
         return queryset
+
 
 class RatingViewSet(viewsets.ModelViewSet):
     queryset = Rating.objects.all()
@@ -119,6 +144,14 @@ class RatingViewSet(viewsets.ModelViewSet):
 class SupportTicketViewSet(viewsets.ModelViewSet):
     queryset = SupportTicket.objects.all()
     serializer_class = SupportTicketSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        # يمكن تخصيص الاستعلام ليعرض التذاكر الخاصة بالمستخدم فقط إذا رغبت
+        return SupportTicket.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
 
 class NotificationViewSet(viewsets.ModelViewSet):
     serializer_class = NotificationSerializer
@@ -148,18 +181,70 @@ class TripStopViewSet(viewsets.ModelViewSet):
     queryset = TripStop.objects.all()
     serializer_class = TripStopSerializer
 
-class ItemDeliveryViewSet(viewsets.ModelViewSet):
-    queryset = ItemDelivery.objects.all()
-    serializer_class = ItemDeliverySerializer
 
 class CasheBookingViewSet(viewsets.ModelViewSet):
     queryset = CasheBooking.objects.all()
     serializer_class = CasheBookingSerializer
 
 class CasheItemDeliveryViewSet(viewsets.ModelViewSet):
+    """
+        واجهة للتعامل مع طلبات التوصيل المسبقة مع فلترة حسب المستخدم والحالة
+        """
     queryset = CasheItemDelivery.objects.all()
     serializer_class = CasheItemDeliverySerializer
+    permission_classes = [IsAuthenticated]
 
+    def get_queryset(self):
+        user = self.request.user
+        qs = super().get_queryset()
+        # فلترة حسب الحالة إذا وجدت
+        status = self.request.query_params.get('status')
+        if status:
+            qs = qs.filter(status=status)
+        # إذا كان المستخدم عميلاً
+        if hasattr(user, 'client'):
+            return qs.filter(user=user.client)
+        # المدير يرى الجميع
+        return qs
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if not hasattr(user, 'client'):
+            raise PermissionDenied("غير مصرح لك بإضافة طلب توصيل مسبق.")
+        serializer.save(user=user.client)
+
+class ItemDeliveryViewSet(viewsets.ModelViewSet):
+    """
+    واجهة للتعامل مع الشحنات مع فلترة حسب رقم الرحلة أو حسب المستخدم (سائق / مرسل) والحالة
+    """
+    queryset = ItemDelivery.objects.all()
+    serializer_class = ItemDeliverySerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = super().get_queryset()
+
+        # إذا تم إرسال رقم الرحلة، نرجع الشحنات المرتبطة بها فقط
+        trip_id = self.request.query_params.get('trip')
+        if trip_id:
+            return qs.filter(trip_id=trip_id)
+
+        # فلترة حسب الحالة إذا لم يُرسل رقم الرحلة
+        status = self.request.query_params.get('status')
+        if status:
+            qs = qs.filter(status=status)
+
+        # إذا كان المستخدم سائقاً: يعرض الشحنات المرتبطة بالرحلات التي يقودها
+        if hasattr(user, 'driver'):
+            qs = qs.filter(trip__driver=user.driver)
+
+        # إذا كان المستخدم مرسلاً: يعرض الشحنات التي أرسلها
+        elif hasattr(user, 'client'):
+            qs = qs.filter(sender=user)
+
+        # المدير يرى الجميع
+        return qs
 
 class SaveFCMTokenView(APIView):
     permission_classes = [permissions.IsAuthenticated]

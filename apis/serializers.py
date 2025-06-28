@@ -9,9 +9,15 @@ class UserSerializer(serializers.ModelSerializer):
         fields = ['id', 'username', 'email']
 
 class ClientSerializer(serializers.ModelSerializer):
+    # هذا الحقل يملأ تلقائيًا بالمستخدم الحالي
+    user = serializers.HiddenField(
+        default=serializers.CurrentUserDefault()
+    )
+
     class Meta:
         model = Client
-        fields = '__all__'
+        fields = ['id', 'user', 'phone_number', 'device_id', 'city']
+        read_only_fields = ['id']
 
 class WalletSerializer(serializers.ModelSerializer):
     class Meta:
